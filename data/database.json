@@ -1,0 +1,31 @@
+{
+  "usuarios": [
+    { "id": 0, "nombre": "admin", "password": "admin123" },
+    { "id": 1, "nombre": "juan", "password": "123" },
+    { "id": 2, "nombre": "ana", "password": "123" },
+    { "id": 3, "nombre": "leo", "password": "123" }
+  ],
+  "clientes": [
+    {
+      "id": 1,
+      "nombre": "Cliente Ejemplo 1",
+      "telefono": "5551234567",
+      "direccion": "Calle Falsa 123",
+      "asignado_a": 1,
+      "tarifa": 150,
+      "saldo_exigible": 500,
+      "saldo": 1200
+    },
+    {
+      "id": 2,
+      "nombre": "Cliente Ejemplo 2",
+      "telefono": "5557654321",
+      "direccion": "Avenida Siempre Viva 742",
+      "asignado_a": 2,
+      "tarifa": 200,
+      "saldo_exigible": 750,
+      "saldo": 1500
+    }
+  ],
+  "llamadas": []
+}
