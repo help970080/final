@@ -87,6 +87,20 @@ button:active {
   background-color: #2563eb;
 }
 
+/* New WhatsApp Button */
+.btn-whatsapp {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  margin-left: 8px;
+  background-color: #25d366; /* WhatsApp green */
+  color: white;
+}
+
+.btn-whatsapp:hover {
+  background-color: #128c7e;
+}
+
+
 /* Tablas modernas */
 table {
   width: 100%;
@@ -198,6 +212,46 @@ input:focus, select:focus {
   margin-left: 8px;
   animation: spin 1s linear infinite;
 }
+
+/* Styles for Mass Assignment Section (optional, but good for clarity) */
+#seccionAsignacion h3 {
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 10px;
+    margin-bottom: 15px;
+}
+
+/* Styles for messages in admin sections */
+.admin-message, .mass-assign-message, .report-message {
+    padding: 10px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.admin-message.info, .mass-assign-message.info, .report-message.info {
+    background-color: #e0f2fe; /* Light blue */
+    color: #0c4a6e;
+}
+
+.admin-message.success, .mass-assign-message.success, .report-message.success {
+    background-color: #d1fae5; /* Light green */
+    color: #065f46;
+}
+
+.admin-message.error, .mass-assign-message.error, .report-message.error {
+    background-color: #fee2e2; /* Light red */
+    color: #991b1b;
+}
+
+/* Adjust button styles for mass assignment */
+button[onclick="asignarClientesMasivamente()"] {
+    background-color: #673AB7; /* Purple for distinct action */
+}
+button[onclick="asignarClientesMasivamente()"]:hover {
+    background-color: #512DA8;
+}
+
 
 /* Responsive */
 @media (max-width: 768px) {

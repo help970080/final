@@ -58,8 +58,7 @@
   <button onclick="cerrarSesion()" style="float:right;">🔒 Cerrar Sesión</button>
 </p>
 
-<!-- Panel de Admin -->
-<div id="seccionAdmin" class="hidden">
+<div id="seccionAdmin" class="hidden seccion-card">
   <h2>Panel de Administración</h2>
   
   <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
@@ -76,6 +75,7 @@
       <input type="password" id="nuevoUsuarioPassword" placeholder="Contraseña" style="flex: 1;" required />
       <button onclick="agregarUsuario()" style="background-color: #4CAF50; color: white;">➕ Agregar Usuario</button>
     </div>
+    <p class="admin-message"></p>
 
     <table id="tablaUsuarios">
       <thead>
@@ -90,21 +90,31 @@
   </div>
 </div>
 
-<!-- Asignación de Clientes (Admin) -->
-<div id="seccionAsignacion" class="hidden">
+<div id="seccionAsignacion" class="hidden seccion-card">
   <h2>📌 Asignación de Clientes</h2>
   
   <div style="margin-bottom: 15px;">
     <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" 
            style="padding: 8px; width: 300px; margin-right: 10px;" />
-    <button onclick="guardarAsignaciones()" style="background-color: #2196F3; color: white;">💾 Guardar Asignaciones</button>
-    <button onclick="seleccionarTodo()" style="background-color: #FF9800; color: white;">✓ Seleccionar Todo</button>
+    <button onclick="guardarAsignaciones()" style="background-color: #2196F3; color: white;">💾 Guardar Asignaciones Individuales</button>
   </div>
+
+  <div style="margin-bottom: 15px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+    <h3>Asignación Masiva</h3>
+    <select id="massAssignUserSelect" style="width: 200px; margin-right: 10px;">
+        <option value="">-- Seleccionar usuario --</option>
+        </select>
+    <button onclick="asignarClientesMasivamente()" style="background-color: #8E24AA; color: white;">🚀 Asignar Clientes Seleccionados</button>
+    <p id="massAssignMessage" class="info" style="margin-top: 10px;"></p>
+  </div>
+  <p class="admin-message"></p>
+
 
   <div style="max-height: 500px; overflow-y: auto;">
     <table id="tablaAsignarClientes">
       <thead>
         <tr>
+          <th><input type="checkbox" id="selectAllClients" onclick="toggleAllClients(this)"></th>
           <th>Cliente</th>
           <th>Teléfono</th>
           <th>Dirección</th>
@@ -119,30 +129,30 @@
   </div>
 </div>
 
-<!-- Mis Clientes Asignados -->
-<h2>Mis Clientes Asignados</h2>
-<div style="max-height: 500px; overflow-y: auto;">
-  <table id="tablaClientes">
-    <thead>
-      <tr>
-        <th>Cliente</th>
-        <th>Teléfono</th>
-        <th>Dirección</th>
-        <th>Tarifa</th>
-        <th>Saldo Exigible</th>
-        <th>Saldo</th>
-        <th>Monto Cobrado</th>
-        <th>Resultado</th>
-        <th>Observaciones</th>
-        <th>Acción</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<div class="seccion-card">
+  <h2>Mis Clientes Asignados</h2>
+  <div style="max-height: 500px; overflow-y: auto;">
+    <table id="tablaClientes">
+      <thead>
+        <tr>
+          <th>Cliente</th>
+          <th>Teléfono</th>
+          <th>Dirección</th>
+          <th>Tarifa</th>
+          <th>Saldo Exigible</th>
+          <th>Saldo</th>
+          <th>Monto Cobrado</th>
+          <th>Resultado</th>
+          <th>Observaciones</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </div>
 
-<!-- Mapa y Ruteo -->
-<div style="margin: 20px 0; border: 1px solid #ddd; padding: 15px; border-radius: 8px;">
+<div class="seccion-card">
   <h2>Mapa de Clientes</h2>
   <div style="display: flex; gap: 20px;">
     <div id="mapa" style="height: 400px; flex: 2; border: 1px solid #ccc;"></div>
@@ -156,30 +166,32 @@
   </div>
 </div>
 
-<!-- Reporte General -->
-<h2>Reporte General</h2>
-<div style="margin-bottom: 15px;">
-  <button onclick="cargarReporte()" style="background-color: #9C27B0; color: white;">🔄 Mostrar Todos los Registros</button>
-  <button onclick="exportarReporte()" style="background-color: #607D8B; color: white;">📄 Exportar a Excel</button>
-</div>
+<div class="seccion-card">
+  <h2>Reporte General</h2>
+  <div style="margin-bottom: 15px;">
+    <button onclick="cargarReporte()" style="background-color: #9C27B0; color: white;">🔄 Mostrar Todos los Registros</button>
+    <button onclick="exportarReporte()" style="background-color: #607D8B; color: white;">📄 Exportar a Excel</button>
+  </div>
+  <p class="report-message"></p>
 
-<div style="max-height: 500px; overflow-y: auto;">
-  <table id="tablaReporte">
-    <thead>
-      <tr>
-        <th>Usuario</th>
-        <th>Cliente</th>
-        <th>Resultado</th>
-        <th>Monto Cobrado</th>
-        <th>Fecha</th>
-        <th>Observaciones</th>
-        <th>Tarifa</th>
-        <th>Saldo Exigible</th>
-        <th>Saldo</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div style="max-height: 500px; overflow-y: auto;">
+    <table id="tablaReporte">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Cliente</th>
+          <th>Resultado</th>
+          <th>Monto Cobrado</th>
+          <th>Fecha</th>
+          <th>Observaciones</th>
+          <th>Tarifa</th>
+          <th>Saldo Exigible</th>
+          <th>Saldo</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 </div>
 
 <p><a href="/">← Volver al inicio</a></p>
@@ -189,7 +201,7 @@
 <script>
 // Recarga automática cada 60 segundos (solo para usuarios no admin)
 setInterval(() => {
-    if (usuarioActual && !esAdmin) {
+    if (usuarioActual && !esAdmin && window.location.pathname.includes("clientes.html")) {
         cargarClientes(usuarioActual.id);
     }
 }, 60000);

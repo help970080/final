@@ -1,7 +1,8 @@
 let usuarioActual = null;
 let esAdmin = false;
-// Variable global para DirectionsRenderer para reutilizarlo si es necesario, o se puede crear localmente.
-// Por ahora, se creará localmente en las funciones que lo necesiten.
+let mapInstance = null;
+let directionsRendererInstance = null;
+let usuariosParaAsignacionMasiva = []; // Global variable for mass assignment users
 
 function login() {
     const nombre = document.getElementById("usuario").value;
@@ -41,8 +42,6 @@ function login() {
 window.addEventListener("load", () => {
     const userData = JSON.parse(localStorage.getItem("user"));
     if (!userData && window.location.pathname.includes("clientes.html")) {
-        // No mostrar alert, simplemente redirigir si es necesario o manejar de otra forma.
-        // alert("Debes iniciar sesión primero."); 
         console.log("Usuario no autenticado, redirigiendo a login.");
         window.location.href = "/";
         return;
@@ -66,8 +65,6 @@ window.addEventListener("load", () => {
             document.getElementById("seccionAsignacion").classList.add("hidden");
             cargarClientes(usuarioActual.id);
         }
-        // La función inicializarMapa se llama mediante el callback en la URL de la API de Google Maps,
-        // o mediante el botón "Mostrar Ruta".
     }
 });
 
@@ -90,7 +87,7 @@ function cargarClientes(usuarioId) {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
                     <td>${cliente.nombre}</td>
-                    <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a>` : "-"}</td>
+                    <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a> <button onclick="enviarWhatsapp('${cliente.telefono}', '${cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
                     <td>${cliente.direccion || "-"}
                       <button onclick="geocodificarCliente(${cliente.id}, this)" class="btn-geo">
                         🌍 Geolocalizar
@@ -120,15 +117,42 @@ function cargarClientes(usuarioId) {
         })
         .catch(error => {
             console.error("Error al cargar clientes:", error);
-            // Considerar mostrar mensaje en la UI en lugar de alert
             document.querySelector("#tablaClientes tbody").innerHTML = `<tr><td colspan="10" class="error">Error al cargar clientes asignados.</td></tr>`;
         });
+}
+
+// New function for sending WhatsApp message
+function enviarWhatsapp(telefono, nombreCliente) {
+    if (!telefono) {
+        alert("El cliente no tiene un número de teléfono registrado.");
+        return;
+    }
+
+    let numeroLimpio = telefono.replace(/\D/g, ''); // Elimina todo lo que no sea dígito
+
+    // Formateo del número para México (asumiendo números de 10 dígitos)
+    // y para otros países si se implementa lógica más compleja
+    if (!numeroLimpio.startsWith('52') && numeroLimpio.length === 10) {
+        numeroLimpio = '52' + numeroLimpio; // Añadir prefijo de México
+    } else if (numeroLimpio.startsWith('044') || numeroLimpio.startsWith('045')) {
+        numeroLimpio = numeroLimpio.substring(3);
+        if (numeroLimpio.length === 10) {
+             numeroLimpio = '52' + numeroLimpio;
+        }
+    } else if (numeroLimpio.length === 11 && numeroLimpio.startsWith('1')) {
+        numeroLimpio = '1' + numeroLimpio;
+    }
+
+    const mensaje = encodeURIComponent(`Hola ${nombreCliente},\nLe escribo de su compañía de gestión de cobranza. Me gustaría hablar sobre su saldo pendiente y las opciones de pago disponibles. ¿Podría indicarnos un buen momento para contactarle?\n\nGracias.`);
+    
+    const whatsappUrl = `https://wa.me/${numeroLimpio}?text=${mensaje}`;
+    window.open(whatsappUrl, '_blank');
 }
 
 async function geocodificarCliente(clienteId, boton) {
     const fila = boton.closest('tr');
     const celdas = fila.querySelectorAll('td');
-    let direccion = celdas[2].textContent.split('🌍')[0].trim(); // Obtener solo el texto de la dirección
+    let direccion = celdas[2].textContent.split('🌍')[0].trim();
     const statusElement = document.getElementById(`geo-status-${clienteId}`);
     const botonGeo = fila.querySelector('.btn-geo');
 
@@ -138,7 +162,6 @@ async function geocodificarCliente(clienteId, boton) {
         return;
     }
 
-    // Limpieza de la dirección
     direccion = direccion.replace(/\n/g, ' ').replace(/\s+/g, ' ').replace(/,+/g, ',').trim();
 
     statusElement.textContent = "Buscando coordenadas...";
@@ -161,12 +184,10 @@ async function geocodificarCliente(clienteId, boton) {
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
             
-            // Mostrar este cliente específico en el mapa y la ruta si es posible
             if (document.getElementById('mapa') && window.mostrarClienteEnMapa) {
                 const nombreCliente = fila.querySelector('td:first-child').textContent;
-                // Pasamos el mapa como argumento si lo tenemos disponible globalmente o lo reinicializamos
                 const mapaElement = document.getElementById('mapa');
-                const map = new google.maps.Map(mapaElement, { // Se reinicializa el mapa aquí
+                const map = new google.maps.Map(mapaElement, {
                     zoom: 15,
                     center: { lat: parseFloat(data.lat), lng: parseFloat(data.lng) },
                     mapTypeControl: true,
@@ -189,21 +210,13 @@ async function geocodificarCliente(clienteId, boton) {
         botonGeo.innerHTML = '🌍 Reintentar';
         console.error("Error en fetch geocodificarCliente:", error);
     } finally {
-        botonGeo.disabled = false; // Siempre re-habilitar el botón
+        botonGeo.disabled = false;
          if (!statusElement.textContent.includes('✓ Ubicada')) {
-             botonGeo.style.backgroundColor = ''; // Restablecer color si falló
+             botonGeo.style.backgroundColor = '';
          }
     }
 }
 
-/**
- * Muestra un cliente específico en el mapa y, si es posible, la ruta desde la ubicación del usuario.
- * @param {google.maps.Map} map - Instancia del mapa de Google.
- * @param {number} lat - Latitud del cliente.
- * @param {number} lng - Longitud del cliente.
- * @param {string} direccion - Dirección del cliente.
- * @param {string} nombreCliente - Nombre del cliente.
- */
 function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
     if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
         console.error("Google Maps API no está disponible.");
@@ -213,14 +226,13 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
 
     const clientePos = { lat: parseFloat(lat), lng: parseFloat(lng) };
 
-    // Marcador del cliente
     new google.maps.Marker({
         position: clientePos,
         map: map,
         title: nombreCliente,
-        icon: "https://maps.google.com/mapfiles/ms/icons/red-dot.png" // Icono rojo para el cliente
+        icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
     });
-    map.setCenter(clientePos); // Centrar mapa en el cliente
+    map.setCenter(clientePos);
 
     document.getElementById('info-ruta').innerHTML = `<h3>Cliente: ${nombreCliente}</h3><p><strong>Dirección:</strong> ${direccion}</p><p>Calculando ruta...</p>`;
 
@@ -228,15 +240,15 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                new google.maps.Marker({ // Marcador del usuario
+                new google.maps.Marker({
                     position: userPos,
                     map: map,
                     title: "Tu ubicación actual",
-                    icon: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png" // Icono azul para el usuario
+                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
                 });
 
                 const directionsService = new google.maps.DirectionsService();
-                const directionsRenderer = new google.maps.DirectionsRenderer({ map: map, suppressMarkers: true }); // Suprimir marcadores por defecto de renderer
+                const directionsRenderer = new google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
 
                 directionsService.route({
                     origin: userPos,
@@ -301,20 +313,33 @@ function cargarTodosLosClientes() {
         })
         .then(clientes => {
             const tbody = document.querySelector("#tablaAsignarClientes tbody");
-            tbody.innerHTML = ""; // Limpiar tabla antes de llenar
+            tbody.innerHTML = "";
 
             if (clientes.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7">No hay clientes registrados en el sistema</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8">No hay clientes registrados en el sistema</td></tr>`; // Updated colspan
                 return;
             }
             
-            fetch("/usuarios") // Obtener lista de usuarios para el dropdown
+            fetch("/usuarios")
                 .then(resUsuarios => resUsuarios.json())
                 .then(usuarios => {
+                    usuariosParaAsignacionMasiva = usuarios; // Store for mass assignment select
+
+                    const massAssignSelect = document.getElementById('massAssignUserSelect');
+                    if (massAssignSelect) {
+                        massAssignSelect.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
+                        usuarios.forEach(u => {
+                            const option = document.createElement('option');
+                            option.value = u.id;
+                            option.textContent = u.nombre;
+                            massAssignSelect.appendChild(option);
+                        });
+                    }
+
                     clientes.forEach(cliente => {
                         const tr = document.createElement("tr");
                         tr.innerHTML = `
-                            <td>${cliente.nombre}</td>
+                            <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td> <td>${cliente.nombre}</td>
                             <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a>` : "-"}</td>
                             <td>${cliente.direccion || "-"}</td>
                             <td>${cliente.tarifa || "-"}</td>
@@ -332,24 +357,20 @@ function cargarTodosLosClientes() {
                 })
                 .catch(errorUsuarios => {
                      console.error("Error al cargar usuarios para asignación:", errorUsuarios);
-                     tbody.innerHTML = `<tr><td colspan="7" class="error">Error al cargar la lista de usuarios.</td></tr>`;
+                     tbody.innerHTML = `<tr><td colspan="8" class="error">Error al cargar la lista de usuarios.</td></tr>`; // Updated colspan
                 });
         })
         .catch(error => {
             console.error("Error al cargar todos los clientes:", error);
-            document.querySelector("#tablaAsignarClientes tbody").innerHTML = `<tr><td colspan="7" class="error">Error al cargar clientes.</td></tr>`;
+            document.querySelector("#tablaAsignarClientes tbody").innerHTML = `<tr><td colspan="8" class="error">Error al cargar clientes.</td></tr>`; // Updated colspan
         });
 }
-// Variable global para el mapa y el renderer para que no se creen múltiples instancias innecesariamente
-let mapInstance = null;
-let directionsRendererInstance = null;
 
 function inicializarMapa() {
     if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
         console.error("Google Maps API no se cargó correctamente. Reintentando...");
-        // No mostrar alert, el usuario ya tiene un botón para reintentar.
         document.getElementById('info-ruta').innerHTML = '<p class="error">Google Maps no está disponible. Intenta recargar o verifica tu conexión.</p>';
-        return; // Salir si Google Maps no está listo
+        return;
     }
 
     const mapaElement = document.getElementById('mapa');
@@ -358,21 +379,18 @@ function inicializarMapa() {
         return;
     }
 
-    // Inicializar el mapa si aún no existe
     if (!mapInstance) {
         mapInstance = new google.maps.Map(mapaElement, {
             zoom: 12,
-            center: { lat: 19.4326, lng: -99.1332 }, // Centro en CDMX por defecto
+            center: { lat: 19.4326, lng: -99.1332 },
             mapTypeControl: true,
             streetViewControl: true,
-            // Considerar añadir más opciones como zoomControl, scaleControl etc.
         });
     }
-     // Inicializar DirectionsRenderer si aún no existe y asociarlo al mapa
-    if (!directionsRendererInstance) {
-        directionsRendererInstance = new google.maps.DirectionsRenderer({ suppressMarkers: true }); // Suprimir marcadores por defecto
+     if (!directionsRendererInstance) {
+        directionsRendererInstance = new google.maps.DirectionsRenderer({ suppressMarkers: true });
     }
-    directionsRendererInstance.setMap(mapInstance); // Siempre asegurarse que está en el mapa actual
+    directionsRendererInstance.setMap(mapInstance);
 
 
     if (!navigator.geolocation) {
@@ -386,23 +404,20 @@ function inicializarMapa() {
         async (pos) => {
             const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
 
-            // Limpiar rutas anteriores del renderer
             directionsRendererInstance.setDirections({routes: []});
 
 
-            // Marcador para la ubicación del usuario (azul)
             new google.maps.Marker({
                 position: userPos,
                 map: mapInstance,
                 title: "Tú estás aquí",
-                icon: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
             });
-            mapInstance.setCenter(userPos); // Centrar mapa en la ubicación del usuario
+            mapInstance.setCenter(userPos);
             mapInstance.setZoom(13);
 
 
             try {
-                // Solo obtener clientes asignados al usuario actual (no admin)
                 if (!usuarioActual || usuarioActual.id === undefined) {
                      document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo identificar al usuario.</p>';
                      return;
@@ -420,21 +435,18 @@ function inicializarMapa() {
                     return;
                 }
 
-                // Marcadores para los clientes (rojos)
                 clientesConCoords.forEach(cliente => {
                     const marker = new google.maps.Marker({
                         position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
                         map: mapInstance,
                         title: `${cliente.nombre}\n${cliente.direccion || ''}`,
-                        icon: "https://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                        icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
                     });
-                    // Event listener para mostrar ruta al hacer clic en un marcador de cliente
                     marker.addListener('click', () => {
                         mostrarRuta(mapInstance, directionsRendererInstance, userPos, cliente);
                     });
                 });
                 
-                // Encontrar y mostrar ruta al cliente más cercano
                 const clienteCercano = encontrarClienteMasCercano(userPos, clientesConCoords);
                 if (clienteCercano) {
                     mostrarRuta(mapInstance, directionsRendererInstance, userPos, clienteCercano);
@@ -458,36 +470,22 @@ function inicializarMapa() {
             }
             document.getElementById('info-ruta').innerHTML = `<p class="error">${errorMsg} Asegúrate de haber concedido permisos de ubicación.</p>`;
         },
-        { timeout: 10000, enableHighAccuracy: true } // Opciones para geolocalización
+        { timeout: 10000, enableHighAccuracy: true }
     );
 }
 
 
-/**
- * Calcula la distancia haversine entre dos puntos geográficos.
- * @param {number} lat1 Latitud del primer punto.
- * @param {number} lon1 Longitud del primer punto.
- * @param {number} lat2 Latitud del segundo punto.
- * @param {number} lon2 Longitud del segundo punto.
- * @returns {number} Distancia en kilómetros.
- */
 function calcularDistancia(lat1, lon1, lat2, lon2) {
-    const R = 6371; // Radio de la Tierra en km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = 
         Math.sin(dLat/2) * Math.sin(dLat/2) +
         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return R * c; // Distancia en km
+    return R * c;
 }
 
-/**
- * Encuentra el cliente más cercano a una posición dada.
- * @param {{lat: number, lng: number}} posicionActual - Posición del usuario.
- * @param {Array<Object>} clientes - Array de objetos cliente con propiedades lat, lng.
- * @returns {Object|null} El cliente más cercano o null si no hay clientes.
- */
 function encontrarClienteMasCercano(posicionActual, clientes) {
     if (!posicionActual || !clientes || clientes.length === 0) return null;
     
@@ -495,7 +493,7 @@ function encontrarClienteMasCercano(posicionActual, clientes) {
     let distanciaMinima = Infinity;
 
     clientes.forEach(cliente => {
-        if (cliente.lat && cliente.lng) { // Asegurarse que el cliente tiene coordenadas
+        if (cliente.lat && cliente.lng) {
             const distancia = calcularDistancia(
                 posicionActual.lat, posicionActual.lng,
                 parseFloat(cliente.lat), parseFloat(cliente.lng)
@@ -510,13 +508,6 @@ function encontrarClienteMasCercano(posicionActual, clientes) {
 }
 
 
-/**
- * Muestra la ruta en el mapa y proporciona información detallada.
- * @param {google.maps.Map} map - Instancia del mapa.
- * @param {google.maps.DirectionsRenderer} directionsRenderer - Instancia del renderizador de direcciones.
- * @param {{lat: number, lng: number}} origen - Coordenadas de origen (usuario).
- * @param {Object} cliente - Objeto del cliente con lat, lng, nombre, direccion.
- */
 function mostrarRuta(map, directionsRenderer, origen, cliente) {
     if (!origen || !cliente || !cliente.lat || !cliente.lng) {
         console.warn("Origen o destino inválido para mostrarRuta.");
@@ -530,10 +521,10 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
     directionsService.route({
         origin: origen,
         destination: destino,
-        travelMode: google.maps.TravelMode.DRIVING // Opcional: permitir al usuario cambiar esto
+        travelMode: google.maps.TravelMode.DRIVING
     }, (response, status) => {
         if (status === google.maps.DirectionsStatus.OK) {
-            directionsRenderer.setDirections(response); // Dibuja la ruta en el mapa
+            directionsRenderer.setDirections(response);
 
             const route = response.routes[0];
             if (!route || !route.legs || route.legs.length === 0) {
@@ -542,18 +533,15 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             }
             const leg = route.legs[0];
 
-            // Construir HTML para las instrucciones paso a paso
             let instructionsHTML = '<h4>Indicaciones detalladas:</h4><ol style="padding-left: 20px; max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding-top:10px; padding-bottom:10px; background-color: #fff; border-radius: 4px;">';
             leg.steps.forEach(step => {
                 instructionsHTML += `<li style="margin-bottom: 8px; padding-left:5px;">${step.instructions} <span style="font-size:0.9em; color:#555;">(${step.distance.text}, ${step.duration.text})</span></li>`;
             });
             instructionsHTML += '</ol>';
 
-            // Construir URL para abrir en Google Maps
             const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origen.lat},${origen.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`;
             const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🗺️ Abrir en Google Maps</a>`;
 
-            // Actualizar el panel de información de la ruta
             document.getElementById('info-ruta').innerHTML = `
                 <h3>Ruta a ${cliente.nombre || 'Cliente'}</h3>
                 <p><strong>Desde:</strong> Tu ubicación actual</p>
@@ -582,8 +570,7 @@ function registrarLlamada(btn, clienteId) {
     const observaciones = observacionesInput.value;
 
     if (!resultado) {
-        // Usar un mensaje más amigable que alert
-        const errorCell = fila.querySelector('td:last-child'); // o una celda específica para mensajes
+        const errorCell = fila.querySelector('td:last-child');
         const originalText = errorCell.innerHTML;
         errorCell.innerHTML = '<span style="color:red;">Selecciona un resultado</span>';
         setTimeout(() => { errorCell.innerHTML = originalText; }, 3000);
@@ -591,7 +578,6 @@ function registrarLlamada(btn, clienteId) {
         return;
     }
     
-    // Deshabilitar botón para evitar múltiples envíos
     btn.disabled = true;
     btn.textContent = 'Registrando...';
 
@@ -602,19 +588,18 @@ function registrarLlamada(btn, clienteId) {
             cliente_id: clienteId,
             usuario_id: usuarioActual.id,
             fecha: new Date().toISOString().split("T")[0],
-            monto_cobrado: monto || 0, // Enviar 0 si está vacío
+            monto_cobrado: monto || 0,
             resultado,
-            observaciones: observaciones || "" // Enviar cadena vacía si está vacío
+            observaciones: observaciones || ""
         })
     })
     .then(res => {
-        // Verificar si la respuesta no es OK (ej. 400, 403, 404, 500)
         if (!res.ok) { 
-            return res.json().then(errorData => { // Intentar parsear el JSON del error
+            return res.json().then(errorData => {
                 throw new Error(errorData.mensaje || `Error HTTP ${res.status}`);
             });
         }
-        return res.json(); // Proceder si la respuesta es OK
+        return res.json();
     })
     .then(data => {
         if (data.status === "ok") {
@@ -627,22 +612,16 @@ function registrarLlamada(btn, clienteId) {
                 }
             }, 500);
         } else {
-            // Este else podría no alcanzarse si el !res.ok maneja todos los errores con .mensaje
-            // alert(data.mensaje || "Error desconocido al registrar llamada");
             const errorCell = fila.querySelector('td:last-child');
             errorCell.innerHTML = `<span style="color:red;">${data.mensaje || "Error"}</span>`;
-             btn.disabled = false; // Re-habilitar botón si hay error
+             btn.disabled = false;
              btn.textContent = 'Registrar';
         }
     })
     .catch(error => {
         console.error("Error en fetch registrarLlamada:", error);
-        // alert(`Error: ${error.message}`); // Mostrar el mensaje de error capturado
         const errorCell = fila.querySelector('td:last-child');
-        const originalText = errorCell.innerHTML; // Guardar el botón
-        errorCell.innerHTML = `<span style="color:red;">${error.message}</span> <button onclick="registrarLlamada(this.nextElementSibling.firstChild, ${clienteId})">Reintentar</button>`;
-        // Para que el reintentar funcione, el botón original debe ser pasado correctamente o la función debe encontrarlo de otra manera.
-        // Lo más simple es re-habilitar el botón original.
+        errorCell.innerHTML = `<span style="color:red;">${error.message}</span> <button onclick="registrarLlamada(this, ${clienteId})">Reintentar</button>`;
         btn.disabled = false;
         btn.textContent = 'Registrar';
     });
@@ -661,9 +640,7 @@ function guardarAsignaciones() {
     }));
 
     if (actualizaciones.length === 0) {
-        // alert("No hay cambios en las asignaciones para guardar.");
-        // Mostrar mensaje en UI
-        const mensajeContenedor = document.getElementById('seccionAsignacion'); // O un elemento específico para mensajes
+        const mensajeContenedor = document.getElementById('seccionAsignacion');
         if(mensajeContenedor){
             let msgEl = mensajeContenedor.querySelector('.admin-message');
             if(!msgEl){
@@ -677,7 +654,7 @@ function guardarAsignaciones() {
         return;
     }
     
-    const botonGuardar = document.querySelector('#seccionAsignacion button[onclick="guardarAsignaciones()"]');
+    const botonGuardar = document.querySelector('button[onclick="guardarAsignaciones()"]');
     if(botonGuardar) {
         botonGuardar.disabled = true;
         botonGuardar.textContent = 'Guardando...';
@@ -694,7 +671,6 @@ function guardarAsignaciones() {
         return res.json();
     })
     .then(data => {
-        // alert("✅ Asignaciones guardadas exitosamente!"); // Reemplazar con mensaje en UI
         const mensajeContenedor = document.getElementById('seccionAsignacion');
          if(mensajeContenedor){
             let msgEl = mensajeContenedor.querySelector('.admin-message');
@@ -707,15 +683,14 @@ function guardarAsignaciones() {
             msgEl.textContent = `✅ ${data.mensaje || 'Asignaciones guardadas exitosamente!'}`;
             setTimeout(() => msgEl.textContent = '', 3000);
         }
-        cargarTodosLosClientes(); // Recargar la tabla de asignación
-        if (!esAdmin && usuarioActual) cargarClientes(usuarioActual.id); // Si el usuario no es admin, recargar sus clientes
+        cargarTodosLosClientes();
+        if (!esAdmin && usuarioActual) cargarClientes(usuarioActual.id);
     })
     .catch(error => {
         console.error("Error al guardar asignaciones:", error);
-        // alert(`❌ Error al guardar asignaciones: ${error.message}`);
          const mensajeContenedor = document.getElementById('seccionAsignacion');
          if(mensajeContenedor){
-            let msgEl = mensajeContenedor.querySelector('.admin-message');
+            let msgEl = mensajeContentar.querySelector('.admin-message');
              if(!msgEl){
                 msgEl = document.createElement('p');
                 msgEl.className = 'admin-message error';
@@ -723,95 +698,87 @@ function guardarAsignaciones() {
             }
             msgEl.className = 'admin-message error';
             msgEl.textContent = `❌ Error al guardar: ${error.message}`;
-            // No ocultar mensaje de error inmediatamente
         }
     }).finally(() => {
         if(botonGuardar) {
             botonGuardar.disabled = false;
-            botonGuardar.textContent = '💾 Guardar Asignaciones';
+            botonGuardar.textContent = '💾 Guardar Asignaciones Individuales';
         }
     });
 }
 
-
-function seleccionarTodo() {
-    // Esta función parece asignar todos los clientes al usuario actual (que debe ser admin para ver esta sección)
-    // O podría ser para seleccionar todos los clientes en la tabla para alguna acción masiva.
-    // El comportamiento actual es asignar al `usuarioActual.id` que podría no ser lo deseado si es un admin genérico.
-    // Confirmar la lógica deseada. Por ahora, asume que se asigna al primer usuario admin o uno específico.
-    
-    const selects = document.querySelectorAll("#tablaAsignarClientes .usuarioSelect");
-    if (selects.length === 0) {
-        // alert("No hay clientes para seleccionar.");
-        return;
-    }
-
-    // Obtener el ID del primer usuario disponible en los selectores (o un ID de admin predeterminado si es necesario)
-    // O mejor, permitir al admin elegir a qué usuario asignar masivamente.
-    // Por simplicidad, si es admin, podría asignarse a sí mismo (ID 0) o dejar que elija de una lista.
-    // Para este ejemplo, si el usuario actual es admin (ID 0), no tiene sentido que se autoasigne tareas así.
-    // Esta función necesita una lógica más clara sobre a QUIÉN se le asignan todos.
-    // Si el objetivo es que un admin asigne TODO a UN usuario específico:
-    // 1. El admin necesitaría seleccionar a qué usuario.
-    // 2. Luego presionar "Seleccionar Todo" (que se renombraría a "Asignar todo a [Usuario Seleccionado]")
-
-    // Comportamiento actual (original): asigna todos los clientes al 'usuarioActual.id'
-    // Esto solo tiene sentido si el admin está actuando como un usuario normal o quiere tomar todos los clientes.
-    if (!usuarioActual || !esAdmin) { // Solo admin puede hacer esto.
-        console.warn("Seleccionar todo solo disponible para administradores.");
-        return;
-    }
-    
-    // Si la idea es que el Admin asigne todos los clientes a UN usuario específico de la lista de usuarios:
-    // Primero, necesitaríamos obtener la lista de usuarios (como en cargarTodosLosClientes)
-    // y permitir al admin seleccionar uno. Por ahora, mantendremos el comportamiento original
-    // pero con una advertencia si no hay un usuario "objetivo" claro.
-
-    let targetUserId = null;
-    if (esAdmin) {
-        // Si es admin, ¿a quién se asignan? ¿Al propio admin (id 0)?
-        // O quizás debería haber un dropdown para que el admin elija a quién asignar todos.
-        // Por ahora, si es admin, no se auto-asigna a menos que explícitamente sea el comportamiento.
-        // alert("Como administrador, por favor selecciona un usuario específico de la lista desplegable para cada cliente o usa la asignación individual.");
-        // return;
-        // Si el admin quiere asignarse a si mismo (ID 0), esto funcionaría si el ID 0 está en los <select>
-        // Pero usualmente el admin no se autoasigna llamadas así.
-        // Vamos a asumir que el admin quiere asignar todos a un usuario que ELEGIRÁ de la lista
-        // pero la función actual no tiene esa capacidad.
-        // Para que "Seleccionar todo" funcione como "asignar todo al usuario actual", el usuarioActual.id debe ser válido en los <select>
-    }
-    // Si no es admin, esta sección no debería ser visible, pero por si acaso:
-    targetUserId = usuarioActual.id; 
-    
-    if (targetUserId === null || targetUserId === undefined) {
-        // alert("No se pudo determinar a qué usuario asignar todos los clientes.");
-        return;
-    }
-
-    let count = 0;
-    selects.forEach(select => {
-        // Verificar si el targetUserId es una opción válida en el select
-        if (Array.from(select.options).some(opt => opt.value == targetUserId)) {
-            select.value = targetUserId;
-            count++;
-        }
+// New function to toggle all checkboxes
+function toggleAllClients(source) {
+    const checkboxes = document.querySelectorAll('.client-checkbox');
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = source.checked;
     });
-    
-    if (count > 0) {
-        // alert(`${count} clientes han sido pre-seleccionados para ser asignados a "${usuarioActual.nombre}". Recuerda Guardar Asignaciones.`);
-        const mensajeContenedor = document.getElementById('seccionAsignacion');
-        if(mensajeContenedor){
-            let msgEl = mensajeContenedor.querySelector('.admin-message');
-            if(!msgEl){
-                msgEl = document.createElement('p');
-                msgEl.className = 'admin-message info';
-                mensajeContenedor.insertBefore(msgEl, document.getElementById('tablaAsignarClientes'));
-            }
-            msgEl.textContent = `${count} clientes pre-seleccionados para ${usuarioActual.nombre}. ¡No olvides Guardar!`;
-            setTimeout(() => msgEl.textContent = '', 4000);
+}
+
+// New function for mass assignment
+async function asignarClientesMasivamente() {
+    const selectedUserElement = document.getElementById('massAssignUserSelect');
+    const targetUserId = selectedUserElement.value ? parseInt(selectedUserElement.value) : null;
+    const massAssignMessage = document.getElementById('massAssignMessage');
+    const assignButton = document.querySelector('button[onclick="asignarClientesMasivamente()"]');
+
+    if (targetUserId === null) {
+        massAssignMessage.className = 'error';
+        massAssignMessage.textContent = "❌ Por favor, selecciona un usuario para la asignación masiva.";
+        setTimeout(() => massAssignMessage.textContent = '', 4000);
+        return;
+    }
+
+    const selectedClientCheckboxes = document.querySelectorAll('.client-checkbox:checked');
+    if (selectedClientCheckboxes.length === 0) {
+        massAssignMessage.className = 'info';
+        massAssignMessage.textContent = "ℹ️ No hay clientes seleccionados para asignar.";
+        setTimeout(() => massAssignMessage.textContent = '', 4000);
+        return;
+    }
+
+    if (!confirm(`¿Está seguro de asignar ${selectedClientCheckboxes.length} clientes al usuario seleccionado?`)) {
+        return;
+    }
+
+    const clientesToUpdate = Array.from(selectedClientCheckboxes).map(checkbox => ({
+        id: parseInt(checkbox.dataset.id),
+        asignado_a: targetUserId
+    }));
+
+    assignButton.disabled = true;
+    assignButton.textContent = 'Asignando...';
+    massAssignMessage.className = 'info';
+    massAssignMessage.textContent = `Asignando ${clientesToUpdate.length} clientes...`;
+
+    try {
+        const response = await fetch("/actualizar-clientes", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ clientes: clientesToUpdate })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.mensaje || `Error HTTP ${response.status}`);
         }
-    } else {
-        // alert(`No se pudieron asignar clientes a "${usuarioActual.nombre}". Verifica que el usuario esté en la lista de opciones.`);
+
+        massAssignMessage.className = 'success';
+        massAssignMessage.textContent = `✅ ${data.mensaje || `${clientesToUpdate.length} clientes asignados masivamente.`}`;
+        
+        document.getElementById('selectAllClients').checked = false;
+        toggleAllClients(document.getElementById('selectAllClients'));
+        selectedUserElement.value = '';
+        cargarTodosLosClientes();
+    } catch (error) {
+        console.error("Error al asignar clientes masivamente:", error);
+        massAssignMessage.className = 'error';
+        massAssignMessage.textContent = `❌ Error al asignar clientes: ${error.message}`;
+    } finally {
+        assignButton.disabled = false;
+        assignButton.textContent = '🚀 Asignar Clientes Seleccionados';
+        setTimeout(() => massAssignMessage.textContent = '', 5000);
     }
 }
 
@@ -824,7 +791,7 @@ function cargarUsuarios() {
         })
         .then(usuarios => {
             const tbody = document.querySelector("#tablaUsuarios tbody");
-            tbody.innerHTML = ""; // Limpiar antes de añadir
+            tbody.innerHTML = "";
             if (usuarios.length === 0) { 
                 tbody.innerHTML = `<tr><td colspan="3">No hay usuarios (aparte del admin)</td></tr>`;
                 return;
@@ -852,12 +819,10 @@ function agregarUsuario() {
     const nombre = nombreInput.value.trim();
     const password = passwordInput.value.trim();
 
-    const botonAgregar = document.querySelector('#seccionAdmin button[onclick="agregarUsuario()"]');
+    const botonAgregar = document.querySelector('button[onclick="agregarUsuario()"]');
 
     if (!nombre || !password) {
-        // alert("❌ Nombre y contraseña son obligatorios");
-        // Mostrar mensaje en UI
-        const msgEl = obtenerMensajeAdmin("seccionAdmin", "#tablaUsuarios");
+        const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
         msgEl.className = 'admin-message error';
         msgEl.textContent = "❌ Nombre y contraseña son obligatorios.";
         return;
@@ -879,24 +844,21 @@ function agregarUsuario() {
     })
     .then(data => {
         if (data.status === "ok") {
-            // alert(`✅ Usuario "${data.usuario.nombre}" creado exitosamente`);
-            const msgEl = obtenerMensajeAdmin("seccionAdmin", "#tablaUsuarios");
+            const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
             msgEl.className = 'admin-message success';
             msgEl.textContent = `✅ Usuario "${data.usuario.nombre}" creado exitosamente.`;
             
             nombreInput.value = "";
             passwordInput.value = "";
-            cargarUsuarios(); // Recargar la lista de usuarios
-            cargarTodosLosClientes(); // Recargar clientes para actualizar los <select> de asignación
+            cargarUsuarios();
+            cargarTodosLosClientes();
         } else {
-            // Este 'else' es redundante si el !res.ok ya lanza error
             throw new Error(data.mensaje || "Error desconocido al crear usuario");
         }
     })
     .catch(error => {
         console.error("Error al crear usuario:", error);
-        // alert(`❌ ${error.message}`);
-        const msgEl = obtenerMensajeAdmin("seccionAdmin", "#tablaUsuarios");
+        const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
         msgEl.className = 'admin-message error';
         msgEl.textContent = `❌ ${error.message}`;
     }).finally(() => {
@@ -906,27 +868,26 @@ function agregarUsuario() {
         }
     });
 }
-// Helper para mensajes de admin
-function obtenerMensajeAdmin(seccionId, antesDeSelector) {
+
+function obtenerMensajeAdmin(seccionId, selectorMensaje) {
     const contenedor = document.getElementById(seccionId);
-    let msgEl = contenedor.querySelector('.admin-message');
+    let msgEl = contenedor.querySelector(selectorMensaje);
     if (!msgEl) {
         msgEl = document.createElement('p');
-        msgEl.className = 'admin-message';
-        const elementoReferencia = contenedor.querySelector(antesDeSelector);
+        msgEl.className = 'admin-message'; // Default class
+        const elementoReferencia = contenedor.querySelector('h3'); // Adjust as needed
         if (elementoReferencia) {
-            contenedor.insertBefore(msgEl, elementoReferencia);
+            elementoReferencia.parentNode.insertBefore(msgEl, elementoReferencia.nextSibling);
         } else {
-            contenedor.appendChild(msgEl); //Fallback
+            contenedor.appendChild(msgEl);
         }
     }
-    setTimeout(() => msgEl.textContent = '', 5000); // Autocerrar mensaje
+    setTimeout(() => msgEl.textContent = '', 5000);
     return msgEl;
 }
 
 
 function eliminarUsuario(id) {
-    // Usar un modal custom en lugar de confirm
     if (!confirm(`¿Está seguro que desea eliminar este usuario? Esta acción no se puede deshacer y los clientes asignados a él quedarán sin asignar.`)) return;
 
     fetch("/usuarios/eliminar", {
@@ -940,20 +901,18 @@ function eliminarUsuario(id) {
     })
     .then(data => {
         if (data.status === "ok") {
-            // alert("✅ Usuario eliminado correctamente.");
-             const msgEl = obtenerMensajeAdmin("seccionAdmin", "#tablaUsuarios");
+             const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
              msgEl.className = 'admin-message success';
              msgEl.textContent = "✅ Usuario eliminado correctamente.";
-            cargarUsuarios(); // Recargar lista de usuarios
-            cargarTodosLosClientes(); // Recargar clientes para actualizar selects
+            cargarUsuarios();
+            cargarTodosLosClientes();
         } else {
             throw new Error(data.mensaje || "Error desconocido al eliminar usuario");
         }
     })
     .catch(error => {
         console.error("Error al eliminar usuario:", error);
-        // alert(`❌ ${error.message}`);
-        const msgEl = obtenerMensajeAdmin("seccionAdmin", "#tablaUsuarios");
+        const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
         msgEl.className = 'admin-message error';
         msgEl.textContent = `❌ ${error.message}`;
     });
@@ -962,7 +921,7 @@ function eliminarUsuario(id) {
 function limpiarClientes() {
     if (!confirm("⚠️ ¿Está seguro que desea eliminar TODOS los clientes de la base de datos? Esta acción es irreversible.")) return;
 
-    const botonLimpiar = document.querySelector('#seccionAdmin button[onclick="limpiarClientes()"]');
+    const botonLimpiar = document.querySelector('button[onclick="limpiarClientes()"]');
     if(botonLimpiar){
         botonLimpiar.disabled = true;
         botonLimpiar.textContent = 'Limpiando...';
@@ -975,13 +934,12 @@ function limpiarClientes() {
         })
         .then(data => {
             if (data.status === "ok") {
-                // alert("✅ Todos los clientes han sido eliminados.");
-                const msgEl = document.getElementById("mensajeExcel"); // Usar el p existente para mensajes de Excel
+                const msgEl = document.getElementById("mensajeExcel");
                 msgEl.className = 'success';
                 msgEl.textContent = "✅ Todos los clientes han sido eliminados.";
 
-                cargarTodosLosClientes(); // Actualizar tabla de asignación (debería estar vacía)
-                if (usuarioActual && !esAdmin) { // Si es un usuario normal, actualizar su lista (debería estar vacía)
+                cargarTodosLosClientes();
+                if (usuarioActual && !esAdmin) {
                     cargarClientes(usuarioActual.id);
                 }
             } else {
@@ -990,7 +948,6 @@ function limpiarClientes() {
         })
         .catch(error => {
             console.error("Error al limpiar clientes:", error);
-            // alert(`❌ Error al eliminar clientes: ${error.message}`);
             const msgEl = document.getElementById("mensajeExcel");
             msgEl.className = 'error';
             msgEl.textContent = `❌ Error al eliminar clientes: ${error.message}`;
@@ -1014,7 +971,7 @@ function procesarArchivo(event) {
 
     mensajeExcel.textContent = "Procesando archivo Excel...";
     mensajeExcel.className = "info";
-    const botonCargar = event.target; // El input type file
+    const botonCargar = event.target;
     if(botonCargar) botonCargar.disabled = true;
 
 
@@ -1025,17 +982,16 @@ function procesarArchivo(event) {
             const workbook = XLSX.read(data, { type: "array" });
             const sheetName = workbook.SheetNames[0];
             const sheet = workbook.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" }); // Usar defval para celdas vacías
+            const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
             if (rows.length === 0) {
                 mensajeExcel.textContent = "❌ El archivo Excel está vacío o no tiene datos en la primera hoja.";
                 mensajeExcel.className = "error";
                 if(botonCargar) botonCargar.disabled = false;
-                event.target.value = ""; // Resetear el input file
+                event.target.value = "";
                 return;
             }
             
-            // Detección de columnas más flexible
             function detectarColumna(rowSample, posiblesNombres) {
                 const header = Object.keys(rowSample).map(key => key.toLowerCase().trim());
                 for (let nombre of posiblesNombres) {
@@ -1043,7 +999,6 @@ function procesarArchivo(event) {
                     const foundKey = Object.keys(rowSample).find(key => key.toLowerCase().trim() === nombreLower);
                     if (foundKey) return foundKey;
                 }
-                // Si no se encuentra por nombre exacto, buscar por inclusión (menos preciso)
                 for (let nombre of posiblesNombres) {
                     const nombreLower = nombre.toLowerCase();
                     const foundKey = Object.keys(rowSample).find(key => key.toLowerCase().trim().includes(nombreLower));
@@ -1070,9 +1025,8 @@ function procesarArchivo(event) {
             }
 
             const clientesExcel = rows.map(row => {
-                // Función para limpiar y convertir a número, devolviendo 0 si no es válido
                 const toNumber = (val) => {
-                    if (typeof val === 'string') val = val.replace(/[^0-9.-]+/g,""); // Quitar símbolos de moneda, etc.
+                    if (typeof val === 'string') val = val.replace(/[^0-9.-]+/g,"");
                     const num = parseFloat(val);
                     return isNaN(num) ? 0 : num;
                 };
@@ -1084,9 +1038,9 @@ function procesarArchivo(event) {
                     tarifa: colTarifa ? toNumber(row[colTarifa]) : 0,
                     saldo_exigible: colSaldoExigible ? toNumber(row[colSaldoExigible]) : 0,
                     saldo: colSaldo ? toNumber(row[colSaldo]) : 0,
-                    asignado_a: null // Por defecto no asignado
+                    asignado_a: null
                 };
-            }).filter(cliente => cliente.nombre !== "Desconocido" && cliente.nombre !== ""); // Filtrar filas vacías por nombre
+            }).filter(cliente => cliente.nombre !== "Desconocido" && cliente.nombre !== "");
 
             if (clientesExcel.length === 0) {
                 mensajeExcel.textContent = "❌ No se encontraron datos de clientes válidos en el archivo.";
@@ -1116,8 +1070,8 @@ function procesarArchivo(event) {
                     }
                     mensajeExcel.textContent = msg;
                     mensajeExcel.className = "success";
-                    event.target.value = ""; // Reset file input
-                    cargarTodosLosClientes(); // Actualizar la tabla de asignación
+                    event.target.value = "";
+                    cargarTodosLosClientes();
                 } else {
                     throw new Error(data.mensaje || "Error desconocido del servidor");
                 }
@@ -1153,9 +1107,15 @@ function cargarReporte() {
         })
         .then(datos => {
             const tbody = document.querySelector("#tablaReporte tbody");
-            tbody.innerHTML = ""; // Limpiar
+            tbody.innerHTML = "";
             if (datos.length === 0) { 
                 tbody.innerHTML = `<tr><td colspan="9">No hay registros de llamadas para mostrar.</td></tr>`;
+                const msgEl = document.querySelector('.report-message');
+                if(msgEl) {
+                    msgEl.className = 'report-message info';
+                    msgEl.textContent = "No hay registros de llamadas para mostrar.";
+                    setTimeout(()=>msgEl.textContent = '', 3000);
+                }
                 return;
             }
                 
@@ -1174,10 +1134,17 @@ function cargarReporte() {
                 `;
                 tbody.appendChild(tr);
             });
+            const msgEl = document.querySelector('.report-message');
+            if(msgEl) msgEl.textContent = ''; // Clear message if successful
         })
         .catch(error => {
             console.error("Error al cargar reporte:", error);
             document.querySelector("#tablaReporte tbody").innerHTML = `<tr><td colspan="9" class="error">Error al cargar el reporte: ${error.message}</td></tr>`;
+            const msgEl = document.querySelector('.report-message');
+            if(msgEl) {
+                msgEl.className = 'report-message error';
+                msgEl.textContent = `Error al cargar el reporte: ${error.message}`;
+            }
         }).finally(()=>{
             if(botonReporte){
                 botonReporte.disabled = false;
@@ -1200,7 +1167,6 @@ function exportarReporte() {
         })
         .then(datos => {
             if (datos.length === 0) {
-                // alert("No hay datos en el reporte para exportar.");
                 const tablaReporte = document.getElementById('tablaReporte');
                 let msgEl = tablaReporte.querySelector('.report-message');
                 if(!msgEl){
@@ -1212,13 +1178,12 @@ function exportarReporte() {
                 setTimeout(()=>msgEl.textContent = '', 3000);
                 return;
             }
-            // Mapear datos para asegurar el orden de columnas y formato si es necesario
             const datosMapeados = datos.map(d => ({
                 "Usuario": d.usuario,
                 "Cliente": d.cliente,
                 "Resultado Llamada": d.resultado,
                 "Monto Cobrado": parseFloat(d.monto_cobrado || 0),
-                "Fecha": d.fecha ? new Date(d.fecha + 'T00:00:00').toLocaleDateString() : "", // Formato de fecha local
+                "Fecha": d.fecha ? new Date(d.fecha + 'T00:00:00').toLocaleDateString() : "",
                 "Observaciones": d.observaciones,
                 "Tarifa Cliente": d.tarifa,
                 "Saldo Exigible Cliente": d.saldo_exigible,
@@ -1226,8 +1191,7 @@ function exportarReporte() {
             }));
             
             const ws = XLSX.utils.json_to_sheet(datosMapeados);
-            // Ajustar ancho de columnas (opcional, pero mejora la legibilidad)
-            const colWidths = Object.keys(datosMapeados[0]).map(key => ({ wch: Math.max(20, key.length + 2) })); // Ancho mínimo 20 o largo del header
+            const colWidths = Object.keys(datosMapeados[0]).map(key => ({ wch: Math.max(20, key.length + 2) }));
             ws['!cols'] = colWidths;
 
             const wb = XLSX.utils.book_new();
@@ -1236,7 +1200,6 @@ function exportarReporte() {
         })
         .catch(error => {
             console.error("Error al generar datos para exportar:", error);
-            // alert(`Error al exportar: ${error.message}`);
             const tablaReporte = document.getElementById('tablaReporte');
             let msgEl = tablaReporte.querySelector('.report-message');
             if(!msgEl){
@@ -1252,19 +1215,18 @@ function exportarReporte() {
             }
         });
 }
-// Filtrado de clientes en la tabla de asignación (Admin)
+
 function filtrarClientes() {
     const filtro = document.getElementById('filtroCliente').value.toLowerCase();
     const filas = document.querySelectorAll("#tablaAsignarClientes tbody tr");
     filas.forEach(fila => {
-        // Asegurarse que no sea la fila de "No hay clientes"
-        if (fila.querySelector('td[colspan="7"]')) {
-            fila.style.display = ""; // Mostrar siempre si es el mensaje de no clientes
+        if (fila.querySelector('td[colspan="8"]')) { // Updated colspan
+            fila.style.display = "";
             return;
         }
-        const nombreCliente = fila.cells[0].textContent.toLowerCase();
-        const telefonoCliente = fila.cells[1].textContent.toLowerCase();
-        const direccionCliente = fila.cells[2].textContent.toLowerCase();
+        const nombreCliente = fila.cells[1].textContent.toLowerCase(); // Adjusted index for new checkbox column
+        const telefonoCliente = fila.cells[2].textContent.toLowerCase(); // Adjusted index
+        const direccionCliente = fila.cells[3].textContent.toLowerCase(); // Adjusted index
         if (nombreCliente.includes(filtro) || telefonoCliente.includes(filtro) || direccionCliente.includes(filtro)) {
             fila.style.display = "";
         } else {
@@ -1274,28 +1236,28 @@ function filtrarClientes() {
 }
 
 
-// Hacer funciones globales para que sean accesibles desde el HTML inline onclick
 window.login = login;
 window.cerrarSesion = cerrarSesion;
 window.procesarArchivo = procesarArchivo;
 window.guardarAsignaciones = guardarAsignaciones;
-window.seleccionarTodo = seleccionarTodo;
 window.cargarReporte = cargarReporte;
 window.exportarReporte = exportarReporte;
 window.agregarUsuario = agregarUsuario;
 window.limpiarClientes = limpiarClientes;
 window.eliminarUsuario = eliminarUsuario;
 window.registrarLlamada = registrarLlamada;
-window.inicializarMapa = inicializarMapa; // Asegurarse que esté global si se usa como callback en URL de API
+window.inicializarMapa = inicializarMapa;
 window.geocodificarCliente = geocodificarCliente;
-window.mostrarClienteEnMapa = mostrarClienteEnMapa; // Puede ser útil globalmente o mantenerse local
-window.filtrarClientes = filtrarClientes; // Para el input de filtro en admin
+window.mostrarClienteEnMapa = mostrarClienteEnMapa;
+window.filtrarClientes = filtrarClientes;
+window.enviarWhatsapp = enviarWhatsapp; // Make new function global
+window.toggleAllClients = toggleAllClients; // Make new function global
+window.asignarClientesMasivamente = asignarClientesMasivamente; // Make new function global
 
 
-// Pequeña mejora para la recarga automática: solo si la ventana está visible.
 setInterval(() => {
     if (document.visibilityState === "visible" && usuarioActual && !esAdmin && window.location.pathname.includes("clientes.html")) {
         console.log("Recargando clientes para usuario...");
         cargarClientes(usuarioActual.id);
     }
-}, 60000); // 60 segundos
+}, 60000);
