@@ -1,0 +1,234 @@
+/* Estilos generales modernos */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background: #f8fafc;
+  margin: 0;
+  padding: 20px;
+  min-height: 100vh;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
+/* Contenedor principal */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  background: white;
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+}
+
+/* Tarjetas de secciones */
+.seccion-card {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+}
+
+/* Tipografía mejorada */
+h1, h2, h3 {
+  color: #1e293b;
+  margin-top: 0;
+}
+
+h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1.5rem;
+}
+
+h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+h3 {
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+/* Botones modernos (funcionales) */
+button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background-color: #4f46e5;
+  color: white;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  font-size: 0.9rem;
+}
+
+button:hover {
+  background-color: #4338ca;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+.btn-geo {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  margin-left: 8px;
+  background-color: #3b82f6;
+}
+
+.btn-geo:hover {
+  background-color: #2563eb;
+}
+
+/* Tablas modernas */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  margin: 20px 0;
+}
+
+th, td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+th {
+  background-color: #f8fafc;
+  font-weight: 600;
+  color: #334155;
+  position: sticky;
+  top: 0;
+}
+
+tr:hover {
+  background-color: #f8fafc !important;
+}
+
+/* Inputs y selects modernos */
+input, select {
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  transition: all 0.3s;
+  font-size: 0.9rem;
+}
+
+input:focus, select:focus {
+  border-color: #4f46e5;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+}
+
+/* Estilos para el mapa */
+#mapa {
+  height: 500px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+#info-ruta {
+  background: #f8fafc;
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+/* Enlaces de teléfono */
+.telefono-link {
+  color: #3b82f6;
+  text-decoration: none;
+  transition: all 0.2s;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.telefono-link:hover {
+  color: #2563eb;
+  background-color: #eff6ff;
+  text-decoration: underline;
+}
+
+/* Estados y utilidades */
+.hidden { display: none; }
+.success { color: #10b981; }
+.error { color: #ef4444; }
+.info { color: #3b82f6; }
+
+.geo-status {
+  margin-left: 8px;
+  font-size: 0.8rem;
+  display: inline-block;
+  min-width: 120px;
+}
+
+.geo-success { color: #10b981; }
+.geo-error { color: #ef4444; }
+.geo-loading { color: #3b82f6; }
+
+/* Animaciones */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.geo-loading::after {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  margin-left: 8px;
+  animation: spin 1s linear infinite;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 15px;
+  }
+  
+  th, td {
+    padding: 8px 10px;
+    font-size: 0.9rem;
+  }
+  
+  #mapa {
+    height: 300px;
+  }
+  
+  .telefono-link {
+    padding: 4px 6px;
+    background-color: #eff6ff;
+    display: inline-block;
+  }
+  
+  .btn-geo {
+    margin-left: 4px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+  }
+  
+  .geo-status {
+    display: block;
+    margin-left: 0;
+    margin-top: 4px;
+  }
+}
