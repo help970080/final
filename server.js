@@ -19,7 +19,8 @@ const DB_FILE = '/opt/render/project/src/data/database.json';
 let dbCache = null;
 let lastDbUpdate = 0;
 
-const Maps_API_KEY = process.env.Maps_API_KEY; // Leer la API Key de una variable de entorno
+// *** PUNTO CLAVE 1: Asegurarse de que Maps_API_KEY se lea correctamente del entorno ***
+const Maps_API_KEY = process.env.Maps_API_KEY; 
 
 function readDB() {
     const now = Date.now();
@@ -130,7 +131,8 @@ app.post('/cargar-clientes', async (req, res) => {
         for (const cliente of nuevosClientes) {
             let lat = null;
             let lng = null;
-            if (cliente.direccion && Maps_API_KEY) {
+            // Solo intentar geocodificar si hay una dirección y la API Key está disponible
+            if (cliente.direccion && Maps_API_KEY) { 
                 try {
                     let direccionCompleta = `${cliente.direccion}, CDMX, México`.replace(/,\s+/g, ', ').replace(/\s+/g, '+');
                     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
@@ -141,6 +143,8 @@ app.post('/cargar-clientes', async (req, res) => {
                         lat = location.lat;
                         lng = location.lng;
                         clientesConCoordenadas++;
+                    } else {
+                        console.warn(`Geocodificación para cliente ${cliente.nombre} falló: ${response.data.status}`);
                     }
                 } catch (error) {
                     console.error("Error en geocodificación para cliente:", cliente.nombre, error.message);
@@ -172,6 +176,11 @@ app.post('/actualizar-coordenadas', async (req, res) => {
                 mensaje: "La dirección proporcionada es demasiado corta o inválida. Debe tener al menos 5 caracteres." 
             });
         }
+        // Añadir lógica para que la API Key esté disponible para el geocoding
+        if (!Maps_API_KEY) {
+            return res.status(500).json({ status: "error", mensaje: "API Key de Google Maps no configurada en el servidor." });
+        }
+
         let direccionCompleta = direccion.trim().replace(/\s+/g, ' ').replace(/,+/g, ',').replace(/(^,|,$)/g, '').replace(/\b(colonia|col|cdmx|mexico)\b/gi, '').trim();
         if (!direccionCompleta.toLowerCase().includes('méxico') && !direccionCompleta.toLowerCase().includes('cdmx') && !direccionCompleta.toLowerCase().includes('ciudad de méxico')) {
             direccionCompleta += ', CDMX, México';
@@ -179,7 +188,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
         const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
             params: {
                 address: direccionCompleta.replace(/\s+/g, '+'),
-                key: Maps_API_KEY,
+                key: Maps_API_KEY, 
                 region: 'mx',
                 components: 'country:MX',
                 bounds: '19.0,-99.5|19.6,-98.9'
@@ -213,7 +222,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
                 mensajeError = "Se ha excedido el límite de consultas a la API de Google Maps";
                 sugerencia = "Intenta nuevamente más tarde o revisa tu cuota de la API Key.";
                 break;
-            case "REQUEST_DENIED":
+            case "REQUEST_DENIED": // Este es el error que te aparece
                 mensajeError = "Acceso denegado a la API de Google Maps";
                 sugerencia = "Verifica la configuración de tu API Key y asegúrate de que los servicios de Geocoding estén habilitados.";
                 break;
@@ -403,6 +412,8 @@ app.get('/ubicaciones-gestores', (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
+    // Añade esto para verificar la clave al inicio del servidor
+    console.log(`Google Maps API Key (server): ${Maps_API_KEY ? 'Cargada' : 'ERROR: No cargada'}`);
     const dataDir = path.dirname(DB_FILE);
     if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });

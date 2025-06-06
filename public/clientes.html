@@ -4,7 +4,19 @@
   <meta charset="UTF-8" />
   <title>Clientes Asignados</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k&libraries=places,geometry&callback=inicializarMapa"></script>
+  <script>
+    // Esta función es el callback para la API de Google Maps
+    // Se llama cuando la API está lista para ser usada.
+    function inicializarMapa() {
+      // Ahora la inicialización real del mapa se hace en una función de script.js
+      // que asegura que la API Key esté disponible si es necesaria.
+      if (typeof window.googleMapsApiLoadedCallback === 'function') {
+        window.googleMapsApiLoadedCallback();
+      }
+    }
+  </script>
+  <script async defer src="https://maps.googleapis.com/maps/api/js?libraries=places,geometry&callback=inicializarMapa"></script>
+  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     .hidden { display: none; }
@@ -91,7 +103,7 @@
 </div>
 
 <div id="seccionAsignacion" class="hidden seccion-card">
-  <h2>📌 Asignación de Clientes</h2>
+  <h2>📌 Asignación de Clientes (Clientes no asignados)</h2>
   
   <div style="margin-bottom: 15px;">
     <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" 
@@ -153,14 +165,14 @@
 </div>
 
 <div class="seccion-card">
-  <h2>Mapa de Clientes</h2>
+  <h2>Mapa de Clientes y Gestores</h2>
   <div style="display: flex; gap: 20px;">
     <div id="mapa" style="height: 400px; flex: 2; border: 1px solid #ccc;"></div>
     <div id="info-ruta" style="flex: 1; padding: 10px; background: #f5f5f5;">
-      <p>Presiona el botón para encontrar clientes cercanos</p>
-      <button onclick="inicializarMapa()" 
+      <p>Presiona el botón para cargar el mapa.</p>
+      <button onclick="inicializarMapaManual()" 
               style="padding: 10px; background: #4285F4; color: white; border: none; border-radius: 4px;">
-        🗺️ Mostrar Ruta / Ubicaciones
+        🗺️ Recargar Mapa / Ubicaciones
       </button>
     </div>
   </div>

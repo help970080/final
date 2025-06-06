@@ -3,7 +3,28 @@ let esAdmin = false;
 let mapInstance = null;
 let directionsRendererInstance = null;
 let usuariosParaAsignacionMasiva = [];
-let gestoresMarkers = []; // Nueva variable global para almacenar los marcadores de gestores
+let gestoresMarkers = [];
+
+// *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
+// Este valor se usará en el frontend para cargar el mapa.
+// Si estás usando Render, es buena práctica que este valor venga de un proceso de build o de un script del lado del servidor
+// que lo inyecte, para que no esté hardcodeado en el JS. Por ahora, pon tu clave aquí.
+// Ejemplo: window.Maps_API_KEY = 'TU_API_KEY_AQUI';
+window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
+
+// Inyectar la API Key en la URL del script de Google Maps si no está presente.
+// Esto asegura que la API Key se use para cargar la librería JS del mapa.
+(function() {
+    const googleMapsScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+    if (googleMapsScript && !googleMapsScript.src.includes('key=')) {
+        if (window.Maps_API_KEY) {
+            googleMapsScript.src = googleMapsScript.src.split('&callback')[0] + '&key=' + window.Maps_API_KEY + '&callback=' + googleMapsScript.src.split('&callback=')[1];
+        } else {
+            console.error("Maps_API_KEY no está definida en window. No se pudo cargar Google Maps con una clave.");
+        }
+    }
+})();
+
 
 function login() {
     const nombre = document.getElementById("usuario").value;
@@ -40,6 +61,20 @@ function login() {
     });
 }
 
+// Función que se llama cuando la API de Google Maps ha terminado de cargar.
+// El callback `inicializarMapa` en clientes.html la llamará.
+window.googleMapsApiLoadedCallback = function() {
+    console.log("Google Maps API cargada y lista.");
+    // Inicia el mapa solo si el usuario está en clientes.html
+    if (window.location.pathname.includes("clientes.html")) {
+        // La inicialización real del mapa (con la ubicación y marcadores)
+        // se hará a través del botón "Mostrar Ruta / Ubicaciones" o al cargar la página si es admin.
+        // Pero la instancia básica del mapa ya puede crearse aquí si se desea un mapa vacío al inicio.
+        // Para este caso, mantenemos la lógica de inicializarMapaManual() para controlar cuándo se carga el contenido.
+    }
+};
+
+
 window.addEventListener("load", () => {
     const userData = JSON.parse(localStorage.getItem("user"));
     if (!userData && window.location.pathname.includes("clientes.html")) {
@@ -59,16 +94,15 @@ window.addEventListener("load", () => {
         if (esAdmin) {
             document.getElementById("seccionAdmin").classList.remove("hidden");
             document.getElementById("seccionAsignacion").classList.remove("hidden");
-            cargarTodosLosClientes();
+            cargarTodosLosClientes(); // Carga clientes no asignados para el admin
             cargarUsuarios();
-            // Si es admin, refrescar las ubicaciones de los gestores cada 30 minutos
-            // Llama a inicializarMapa al cargar y luego refresca gestores cada 30 min
-            if(window.google) inicializarMapa(); // Asegurarse que Google Maps API ya cargó
-            setInterval(cargarYMostrarGestoresEnMapa, 30 * 60 * 1000); // 30 minutos
+            // Para el admin, inicializa el mapa con gestores cada 30 min
+            if(window.google) inicializarMapaManual(); // Inicializa el mapa al cargar si la API ya está lista
+            setInterval(inicializarMapaManual, 30 * 60 * 1000); // Refresca mapa admin cada 30 minutos
         } else {
             document.getElementById("seccionAdmin").classList.add("hidden");
             document.getElementById("seccionAsignacion").classList.add("hidden");
-            cargarClientes(usuarioActual.id);
+            cargarClientes(usuarioActual.id); // Carga clientes asignados al gestor
             // Si es gestor, enviar su ubicación cada 30 minutos
             solicitarYEnviarUbicacion(); // Enviar al cargar la página
             setInterval(solicitarYEnviarUbicacion, 30 * 60 * 1000); // Cada 30 minutos
@@ -191,7 +225,6 @@ async function geocodificarCliente(clienteId, boton) {
             
             if (document.getElementById('mapa') && window.mostrarClienteEnMapa && mapInstance) {
                 const nombreCliente = fila.querySelector('td:first-child').textContent;
-                // No reiniciar el mapa, usar la instancia existente
                 mostrarClienteEnMapa(mapInstance, data.lat, data.lng, data.direccion_formateada || direccion, nombreCliente);
             }
         } else {
@@ -229,7 +262,7 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
         position: clientePos,
         map: map,
         title: nombreCliente,
-        icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+        icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png" // Cliente en rojo
     });
     map.setCenter(clientePos);
 
@@ -243,7 +276,7 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
                     position: userPos,
                     map: map,
                     title: "Tu ubicación actual",
-                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" // Usuario en azul
                 });
 
                 const directionsService = new google.maps.DirectionsService();
@@ -310,12 +343,15 @@ function cargarTodosLosClientes() {
             if (!res.ok) throw new Error('Error al cargar todos los clientes');
             return res.json();
         })
-        .then(clientes => {
+        .then(allClients => {
+            // Filtrar para mostrar solo clientes no asignados en la tabla de admin
+            const clientesNoAsignados = allClients.filter(c => c.asignado_a === null);
+
             const tbody = document.querySelector("#tablaAsignarClientes tbody");
             tbody.innerHTML = "";
 
-            if (clientes.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8">No hay clientes registrados en el sistema</td></tr>`;
+            if (clientesNoAsignados.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8">No hay clientes no asignados en el sistema</td></tr>`;
                 return;
             }
             
@@ -335,7 +371,7 @@ function cargarTodosLosClientes() {
                         });
                     }
 
-                    clientes.forEach(cliente => {
+                    clientesNoAsignados.forEach(cliente => { // Usar clientesNoAsignados
                         const tr = document.createElement("tr");
                         tr.innerHTML = `
                             <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td>
@@ -366,9 +402,11 @@ function cargarTodosLosClientes() {
         });
 }
 
-function inicializarMapa() {
+// Renombrar la función inicializarMapa a inicializarMapaManual
+// para que el botón la llame y el callback de Google Maps API llame a `window.googleMapsApiLoadedCallback`
+function inicializarMapaManual() {
     if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
-        console.error("Google Maps API no se cargó correctamente. Reintentando...");
+        console.error("Google Maps API no se cargó correctamente. No se puede inicializar el mapa.");
         document.getElementById('info-ruta').innerHTML = '<p class="error">Google Maps no está disponible. Intenta recargar o verifica tu conexión.</p>';
         return;
     }
@@ -392,102 +430,110 @@ function inicializarMapa() {
     }
     directionsRendererInstance.setMap(mapInstance);
 
-
-    if (!navigator.geolocation) {
-        document.getElementById('info-ruta').innerHTML = '<p class="info">Tu navegador no soporta geolocalización.</p>';
-        return;
-    }
-    
     document.getElementById('info-ruta').innerHTML = '<p class="info">Obteniendo tu ubicación...</p>';
 
-    navigator.geolocation.getCurrentPosition(
-        async (pos) => {
-            const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    // Obtener la ubicación del usuario actual (admin o gestor)
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
 
-            directionsRendererInstance.setDirections({routes: []});
+                // Limpiar rutas y marcadores anteriores del renderer
+                directionsRendererInstance.setDirections({routes: []});
+                gestoresMarkers.forEach(marker => marker.setMap(null)); // Limpiar marcadores de gestores
+                gestoresMarkers = []; // Resetear array
 
-            if (esAdmin) {
+                // Marcador para la ubicación del ADMIN/Usuario (azul)
                 new google.maps.Marker({
                     position: userPos,
                     map: mapInstance,
-                    title: "Ubicación del Admin",
-                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                    title: esAdmin ? "Ubicación del Admin" : "Tu ubicación actual",
+                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png" // Icono azul para el Admin/Usuario
                 });
-            } else {
-                 new google.maps.Marker({
-                    position: userPos,
-                    map: mapInstance,
-                    title: "Tú estás aquí",
-                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
-                });
-            }
 
-            mapInstance.setCenter(userPos);
-            mapInstance.setZoom(13);
+                mapInstance.setCenter(userPos);
+                mapInstance.setZoom(13);
 
 
-            try {
-                if (esAdmin) {
-                    await cargarYMostrarGestoresEnMapa();
-                    document.getElementById('info-ruta').innerHTML = '<p class="info">Mapa cargado. Actualizando ubicaciones de gestores cada 30 min.</p>';
+                try {
+                    if (esAdmin) {
+                        await cargarYMostrarGestoresEnMapa(); // Llama a esta función para mostrar gestores
+                        // Opcional: Si quieres mostrar todos los clientes para el admin
+                        // const responseClientes = await fetch(`/clientes`);
+                        // if (!responseClientes.ok) throw new Error(`Error al obtener clientes: ${responseClientes.status}`);
+                        // const clientes = await responseClientes.json();
+                        // const clientesConCoords = clientes.filter(c => c.lat && c.lng);
+                        // clientesConCoords.forEach(cliente => {
+                        //     new google.maps.Marker({
+                        //         position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
+                        //         map: mapInstance,
+                        //         title: `${cliente.nombre}\n${cliente.direccion || ''}`,
+                        //         icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                        //     });
+                        // });
+                        document.getElementById('info-ruta').innerHTML = '<p class="info">Mapa cargado. Actualizando ubicaciones de gestores cada 30 min.</p>';
 
-                } else {
-                    if (!usuarioActual || usuarioActual.id === undefined) {
-                         document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo identificar al usuario.</p>';
-                         return;
-                    }
-                    const response = await fetch(`/clientes/${usuarioActual.id}`);
-                    if (!response.ok) throw new Error(`Error al obtener clientes: ${response.status}`);
-                    const clientes = await response.json();
-                    
-                    const clientesConCoords = clientes.filter(c => c.lat && c.lng);
-                    
-                    if (clientesConCoords.length === 0) {
-                        document.getElementById('info-ruta').innerHTML = `
-                            <p class="info">No tienes clientes asignados con coordenadas válidas para mostrar en el mapa.</p>
-                            <p>Usa el botón "🌍 Geolocalizar" junto a cada dirección en tu lista de clientes.</p>`;
-                        return;
-                    }
+                    } else { // Si es gestor
+                        if (!usuarioActual || usuarioActual.id === undefined) {
+                             document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo identificar al usuario.</p>';
+                             return;
+                        }
+                        const response = await fetch(`/clientes/${usuarioActual.id}`);
+                        if (!response.ok) throw new Error(`Error al obtener clientes: ${response.status}`);
+                        const clientes = await response.json();
+                        
+                        const clientesConCoords = clientes.filter(c => c.lat && c.lng);
+                        
+                        if (clientesConCoords.length === 0) {
+                            document.getElementById('info-ruta').innerHTML = `
+                                <p class="info">No tienes clientes asignados con coordenadas válidas para mostrar en el mapa.</p>
+                                <p>Usa el botón "🌍 Geolocalizar" junto a cada dirección en tu lista de clientes.</p>`;
+                            return;
+                        }
 
-                    clientesConCoords.forEach(cliente => {
-                        const marker = new google.maps.Marker({
-                            position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
-                            map: mapInstance,
-                            title: `${cliente.nombre}\n${cliente.direccion || ''}`,
-                            icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                        clientesConCoords.forEach(cliente => {
+                            const marker = new google.maps.Marker({
+                                position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
+                                map: mapInstance,
+                                title: `${cliente.nombre}\n${cliente.direccion || ''}`,
+                                icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png" // Clientes en rojo
+                            });
+                            marker.addListener('click', () => {
+                                mostrarRuta(mapInstance, directionsRendererInstance, userPos, cliente);
+                            });
                         });
-                        marker.addListener('click', () => {
-                            mostrarRuta(mapInstance, directionsRendererInstance, userPos, cliente);
-                        });
-                    });
-                    
-                    const clienteCercano = encontrarClienteMasCercano(userPos, clientesConCoords);
-                    if (clienteCercano) {
-                        mostrarRuta(mapInstance, directionsRendererInstance, userPos, clienteCercano);
-                    } else {
-                         document.getElementById('info-ruta').innerHTML = '<p class="info">Calcula la ruta a un cliente haciendo clic en su marcador.</p>';
+                        
+                        const clienteCercano = encontrarClienteMasCercano(userPos, clientesConCoords);
+                        if (clienteCercano) {
+                            mostrarRuta(mapInstance, directionsRendererInstance, userPos, clienteCercano);
+                        } else {
+                             document.getElementById('info-ruta').innerHTML = '<p class="info">Calcula la ruta a un cliente haciendo clic en su marcador.</p>';
+                        }
                     }
+                    
+                } catch (error) {
+                    console.error("Error al cargar o procesar datos en inicializarMapa:", error);
+                    document.getElementById('info-ruta').innerHTML = `<p class="error">Error al cargar datos: ${error.message}</p>`;
                 }
-                
-            } catch (error) {
-                console.error("Error al cargar o procesar datos en inicializarMapa:", error);
-                document.getElementById('info-ruta').innerHTML = `<p class="error">Error al cargar datos: ${error.message}</p>`;
-            }
-        },
-        (error) => {
-            console.warn("Error al obtener ubicación del usuario:", error.message);
-            let errorMsg = "Error al obtener tu ubicación: ";
-            switch(error.code) {
-                case error.PERMISSION_DENIED: errorMsg += "Permiso denegado."; break;
-                case error.POSITION_UNAVAILABLE: errorMsg += "Información de ubicación no disponible."; break;
-                case error.TIMEOUT: errorMsg += "Tiempo de espera agotado."; break;
-                default: errorMsg += "Error desconocido."; break;
-            }
-            document.getElementById('info-ruta').innerHTML = `<p class="error">${errorMsg} Asegúrate de haber concedido permisos de ubicación.</p>`;
-        },
-        { timeout: 10000, enableHighAccuracy: true }
-    );
+            },
+            (error) => {
+                console.warn("Error al obtener ubicación del usuario:", error.message);
+                let errorMsg = "Error al obtener tu ubicación: ";
+                switch(error.code) {
+                    case error.PERMISSION_DENIED: errorMsg += "Permiso denegado."; break;
+                    case error.POSITION_UNAVAILABLE: errorMsg += "Información de ubicación no disponible."; break;
+                    case error.TIMEOUT: errorMsg += "Tiempo de espera agotado."; break;
+                    default: errorMsg += "Error desconocido."; break;
+                }
+                document.getElementById('info-ruta').innerHTML = `<p class="error">${errorMsg} Asegúrate de haber concedido permisos de ubicación.</p>`;
+            },
+            { timeout: 10000, enableHighAccuracy: true }
+        );
+    } else {
+        document.getElementById('info-ruta').innerHTML = '<p class="info">Tu navegador no soporta geolocalización para cargar el mapa.</p>';
+    }
 }
+
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -519,56 +565,6 @@ function encontrarClienteMasCercano(posicionActual, clientes) {
         }
     });
     return clienteMasCercano;
-}
-
-function mostrarRuta(map, directionsRenderer, origen, cliente) {
-    if (!origen || !cliente || !cliente.lat || !cliente.lng) {
-        console.warn("Origen o destino inválido para mostrarRuta.");
-        document.getElementById('info-ruta').innerHTML = '<p class="error">No se pueden mostrar detalles de la ruta: faltan coordenadas de origen o destino.</p>';
-        return;
-    }
-    const destino = { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) };
-    
-    const directionsService = new google.maps.DirectionsService();
-
-    directionsService.route({
-        origin: origen,
-        destination: destino,
-        travelMode: google.maps.TravelMode.DRIVING
-    }, (response, status) => {
-        if (status === google.maps.DirectionsStatus.OK) {
-            directionsRenderer.setDirections(response);
-
-            const route = response.routes[0];
-            if (!route || !route.legs || route.legs.length === 0) {
-                document.getElementById('info-ruta').innerHTML = '<p class="error">No se encontraron detalles de la ruta en la respuesta.</p>';
-                return;
-            }
-            const leg = route.legs[0];
-
-            let instructionsHTML = '<h4>Indicaciones detalladas:</h4><ol style="padding-left: 20px; max-height: 200px; overflow-y: auto; border: 1px solid #eee; padding-top:10px; padding-bottom:10px; background-color: #fff; border-radius: 4px;">';
-            leg.steps.forEach(step => {
-                instructionsHTML += `<li style="margin-bottom: 8px; padding-left:5px;">${step.instructions} <span style="font-size:0.9em; color:#555;">(${step.distance.text}, ${step.duration.text})</span></li>`;
-            });
-            instructionsHTML += '</ol>';
-
-            const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origen.lat},${origen.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`;
-            const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
-
-            document.getElementById('info-ruta').innerHTML = `
-                <h3>Ruta a ${cliente.nombre || 'Cliente'}</h3>
-                <p><strong>Desde:</strong> Tu ubicación actual</p>
-                <p><strong>Hacia:</strong> ${cliente.direccion || 'No disponible'}</p>
-                <p style="margin-bottom: 5px;"><strong>Distancia Total:</strong> ${leg.distance.text}</p>
-                <p style="margin-top: 0px;"><strong>Duración Estimada:</strong> ${leg.duration.text}</p>
-                ${navigationLink}
-                ${instructionsHTML}
-            `;
-        } else {
-            console.warn('Error al calcular la ruta en mostrarRuta: ' + status);
-            document.getElementById('info-ruta').innerHTML = `<p class="error">No se pudo calcular la ruta. Código de error: ${status}</p>`;
-        }
-    });
 }
 
 
@@ -696,7 +692,7 @@ function guardarAsignaciones() {
             msgEl.textContent = `✅ ${data.mensaje || 'Asignaciones guardadas exitosamente!'}`;
             setTimeout(() => msgEl.textContent = '', 3000);
         }
-        cargarTodosLosClientes();
+        cargarTodosLosClientes(); // Recargar la tabla para mostrar solo los no asignados
         if (!esAdmin && usuarioActual) cargarClientes(usuarioActual.id);
     })
     .catch(error => {
@@ -781,7 +777,7 @@ async function asignarClientesMasivamente() {
         document.getElementById('selectAllClients').checked = false;
         toggleAllClients(document.getElementById('selectAllClients'));
         selectedUserElement.value = '';
-        cargarTodosLosClientes();
+        cargarTodosLosClientes(); // Recargar la tabla para mostrar solo los no asignados
     } catch (error) {
         console.error("Error al asignar clientes masivamente:", error);
         massAssignMessage.className = 'error';
@@ -1137,7 +1133,7 @@ function cargarReporte() {
                     <td>${row.cliente || "-"}</td>
                     <td>${row.resultado || "-"}</td>
                     <td>$${parseFloat(row.monto_cobrado || 0).toFixed(2)}</td>
-                    <td>${row.fecha ? new Date(row.fecha + 'T00:00:00').toLocaleDateString() : "-"}</td>
+                    <td>${row.fecha ? new Date(row.fecha + 'T00:00:00').toLocaleDateString('es-MX', {timeZone: 'America/Mexico_City'}) : "-"}</td>
                     <td>${row.observaciones || "-"}</td>
                     <td>${row.tarifa || "-"}</td>
                     <td>${row.saldo_exigible || "-"}</td>
@@ -1194,7 +1190,7 @@ function exportarReporte() {
                 "Cliente": d.cliente,
                 "Resultado Llamada": d.resultado,
                 "Monto Cobrado": parseFloat(d.monto_cobrado || 0),
-                "Fecha": d.fecha ? new Date(d.fecha + 'T00:00:00').toLocaleDateString() : "",
+                "Fecha": d.fecha ? new Date(d.fecha + 'T00:00:00').toLocaleDateString('es-MX', {timeZone: 'America/Mexico_City'}) : "",
                 "Observaciones": d.observaciones,
                 "Tarifa Cliente": d.tarifa,
                 "Saldo Exigible Cliente": d.saldo_exigible,
@@ -1278,11 +1274,12 @@ function solicitarYEnviarUbicacion() {
             },
             (error) => {
                 console.warn("No se pudo obtener la ubicación del gestor:", error.message);
+                // Si el usuario niega el permiso, no preguntará de nuevo a menos que lo resetee manualmente.
             },
             {
                 enableHighAccuracy: false,
                 timeout: 10000,
-                maximumAge: 300000
+                maximumAge: 300000 // 5 minutos
             }
         );
     } else {
@@ -1309,7 +1306,7 @@ async function cargarYMostrarGestoresEnMapa() {
                     position: { lat: parseFloat(gestor.lat), lng: parseFloat(gestor.lng) },
                     map: mapInstance,
                     title: `Gestor: ${gestor.nombre}\nÚltima ubicación: ${gestor.ultima_actualizacion ? new Date(gestor.ultima_actualizacion).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) : 'N/A'}`,
-                    icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+                    icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png" // Icono verde para gestores
                 });
                 gestoresMarkers.push(marker);
             }
@@ -1332,13 +1329,12 @@ window.agregarUsuario = agregarUsuario;
 window.limpiarClientes = limpiarClientes;
 window.eliminarUsuario = eliminarUsuario;
 window.registrarLlamada = registrarLlamada;
-window.inicializarMapa = inicializarMapa;
+window.inicializarMapaManual = inicializarMapaManual; // Renombrada y exportada
 window.geocodificarCliente = geocodificarCliente;
 window.mostrarClienteEnMapa = mostrarClienteEnMapa;
 window.filtrarClientes = filtrarClientes;
 window.enviarWhatsapp = enviarWhatsapp;
 window.toggleAllClients = toggleAllClients;
 window.asignarClientesMasivamente = asignarClientesMasivamente;
-// Nuevas funciones globales para el rastreo de ubicación
 window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
 window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;
