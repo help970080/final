@@ -19,7 +19,7 @@ const DB_FILE = '/opt/render/project/src/data/database.json';
 let dbCache = null;
 let lastDbUpdate = 0;
 
-const GOOGLE_MAPS_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // Recuerda gestionar tus API keys de forma segura
+const Maps_API_KEY = process.env.Maps_API_KEY; // Leer la API Key de una variable de entorno
 
 function readDB() {
     const now = Date.now();
@@ -37,6 +37,14 @@ function readDB() {
                 clientes: [],
                 llamadas: []
             };
+            // Añadir ubicacion_actual a los usuarios existentes en caso de inicialización, si ya existe se mantendría
+            initialData.usuarios = initialData.usuarios.map(u => ({
+                ...u,
+                lat: null, // Nueva propiedad
+                lng: null, // Nueva propiedad
+                ultima_actualizacion_ubicacion: null // Nueva propiedad
+            }));
+
             const dir = path.dirname(DB_FILE);
             if (!fs.existsSync(dir)) {
                 fs.mkdirSync(dir, { recursive: true });
@@ -46,6 +54,13 @@ function readDB() {
         } else {
             try {
                 dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+                // Asegurarse de que todos los usuarios tienen las nuevas propiedades al cargar la DB
+                dbCache.usuarios = dbCache.usuarios.map(u => ({
+                    ...u,
+                    lat: u.lat !== undefined ? u.lat : null,
+                    lng: u.lng !== undefined ? u.lng : null,
+                    ultima_actualizacion_ubicacion: u.ultima_actualizacion_ubicacion !== undefined ? u.ultima_actualizacion_ubicacion : null
+                }));
             } catch (err) {
                 console.error("Error al leer database.json:", err);
                 dbCache = { usuarios: [{ id: 0, nombre: "admin", password: "admin123" }], clientes: [], llamadas: [] };
@@ -115,11 +130,11 @@ app.post('/cargar-clientes', async (req, res) => {
         for (const cliente of nuevosClientes) {
             let lat = null;
             let lng = null;
-            if (cliente.direccion && GOOGLE_MAPS_API_KEY) {
+            if (cliente.direccion && Maps_API_KEY) {
                 try {
                     let direccionCompleta = `${cliente.direccion}, CDMX, México`.replace(/,\s+/g, ', ').replace(/\s+/g, '+');
                     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-                        params: { address: direccionCompleta, key: GOOGLE_MAPS_API_KEY, region: 'mx' }
+                        params: { address: direccionCompleta, key: Maps_API_KEY, region: 'mx' }
                     });
                     if (response.data.status === "OK") {
                         const location = response.data.results[0].geometry.location;
@@ -164,7 +179,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
         const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
             params: {
                 address: direccionCompleta.replace(/\s+/g, '+'),
-                key: GOOGLE_MAPS_API_KEY,
+                key: Maps_API_KEY,
                 region: 'mx',
                 components: 'country:MX',
                 bounds: '19.0,-99.5|19.6,-98.9'
@@ -271,7 +286,14 @@ app.post('/usuarios', (req, res) => {
         return res.status(400).json({ status: "error", mensaje: "El nombre de usuario ya existe. Por favor, elige otro." });
     }
     const nuevoId = db.usuarios.length > 0 ? Math.max(...db.usuarios.map(u => u.id)) + 1 : 1;
-    const nuevoUsuario = { id: nuevoId, nombre: nombre.trim(), password: password.trim() };
+    const nuevoUsuario = { 
+        id: nuevoId, 
+        nombre: nombre.trim(), 
+        password: password.trim(),
+        lat: null, // Inicializar nuevas propiedades
+        lng: null,
+        ultima_actualizacion_ubicacion: null
+    };
     db.usuarios.push(nuevoUsuario);
     writeDB(db);
     res.json({ status: "ok", usuario: { id: nuevoUsuario.id, nombre: nuevoUsuario.nombre } });
@@ -332,16 +354,10 @@ app.post('/llamadas', (req, res) => {
         return res.status(403).json({ status: "error", mensaje: "Este cliente no está asignado a tu usuario. No puedes registrar la llamada." });
     }
 
-    // -------------------------------------------------------------------------------------
-    // INICIO DE LA MODIFICACIÓN: Verificación de una llamada por día RESTAURADA
-    // -------------------------------------------------------------------------------------
     const hoy = new Date().toISOString().split("T")[0];
     if (db.llamadas.find(l => l.cliente_id === nuevaLlamada.cliente_id && l.fecha === hoy)) {
         return res.status(400).json({ status: "error", mensaje: "Este cliente ya fue procesado hoy. Solo se permite una llamada por día." });
     }
-    // -------------------------------------------------------------------------------------
-    // FIN DE LA MODIFICACIÓN
-    // -------------------------------------------------------------------------------------
 
     const maxIdLlamada = db.llamadas.reduce((max, l) => Math.max(max, l.id || 0), 0);
     nuevaLlamada.id = maxIdLlamada + 1;
@@ -350,6 +366,39 @@ app.post('/llamadas', (req, res) => {
     db.clientes[clienteIndex].asignado_a = null; 
     writeDB(db);
     res.json({ status: "ok", mensaje: "Llamada registrada exitosamente.", id: nuevaLlamada.id });
+});
+
+// Nuevo endpoint para que los gestores envíen su ubicación
+app.post('/actualizar-ubicacion-usuario', (req, res) => {
+    const { userId, lat, lng } = req.body;
+    const db = readDB();
+    const usuarioIndex = db.usuarios.findIndex(u => u.id === parseInt(userId));
+
+    if (usuarioIndex !== -1) {
+        db.usuarios[usuarioIndex].lat = lat;
+        db.usuarios[usuarioIndex].lng = lng;
+        db.usuarios[usuarioIndex].ultima_actualizacion_ubicacion = new Date().toISOString();
+        writeDB(db);
+        res.json({ status: "ok", mensaje: "Ubicación actualizada." });
+    } else {
+        res.status(404).json({ status: "error", mensaje: "Usuario no encontrado." });
+    }
+});
+
+// Nuevo endpoint para que el admin obtenga las ubicaciones de todos los gestores
+app.get('/ubicaciones-gestores', (req, res) => {
+    const db = readDB();
+    // Excluir al admin y devolver solo los usuarios con ubicación
+    const gestoresConUbicacion = db.usuarios
+        .filter(u => u.id !== 0 && u.lat !== null && u.lng !== null)
+        .map(u => ({
+            id: u.id,
+            nombre: u.nombre,
+            lat: u.lat,
+            lng: u.lng,
+            ultima_actualizacion: u.ultima_actualizacion_ubicacion
+        }));
+    res.json(gestoresConUbicacion);
 });
 
 app.listen(PORT, () => {

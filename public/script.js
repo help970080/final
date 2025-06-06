@@ -2,7 +2,8 @@ let usuarioActual = null;
 let esAdmin = false;
 let mapInstance = null;
 let directionsRendererInstance = null;
-let usuariosParaAsignacionMasiva = []; // Global variable for mass assignment users
+let usuariosParaAsignacionMasiva = [];
+let gestoresMarkers = []; // Nueva variable global para almacenar los marcadores de gestores
 
 function login() {
     const nombre = document.getElementById("usuario").value;
@@ -60,10 +61,17 @@ window.addEventListener("load", () => {
             document.getElementById("seccionAsignacion").classList.remove("hidden");
             cargarTodosLosClientes();
             cargarUsuarios();
+            // Si es admin, refrescar las ubicaciones de los gestores cada 30 minutos
+            // Llama a inicializarMapa al cargar y luego refresca gestores cada 30 min
+            if(window.google) inicializarMapa(); // Asegurarse que Google Maps API ya cargó
+            setInterval(cargarYMostrarGestoresEnMapa, 30 * 60 * 1000); // 30 minutos
         } else {
             document.getElementById("seccionAdmin").classList.add("hidden");
             document.getElementById("seccionAsignacion").classList.add("hidden");
             cargarClientes(usuarioActual.id);
+            // Si es gestor, enviar su ubicación cada 30 minutos
+            solicitarYEnviarUbicacion(); // Enviar al cargar la página
+            setInterval(solicitarYEnviarUbicacion, 30 * 60 * 1000); // Cada 30 minutos
         }
     }
 });
@@ -121,19 +129,16 @@ function cargarClientes(usuarioId) {
         });
 }
 
-// New function for sending WhatsApp message
 function enviarWhatsapp(telefono, nombreCliente) {
     if (!telefono) {
         alert("El cliente no tiene un número de teléfono registrado.");
         return;
     }
 
-    let numeroLimpio = telefono.replace(/\D/g, ''); // Elimina todo lo que no sea dígito
+    let numeroLimpio = telefono.replace(/\D/g, '');
 
-    // Formateo del número para México (asumiendo números de 10 dígitos)
-    // y para otros países si se implementa lógica más compleja
     if (!numeroLimpio.startsWith('52') && numeroLimpio.length === 10) {
-        numeroLimpio = '52' + numeroLimpio; // Añadir prefijo de México
+        numeroLimpio = '52' + numeroLimpio;
     } else if (numeroLimpio.startsWith('044') || numeroLimpio.startsWith('045')) {
         numeroLimpio = numeroLimpio.substring(3);
         if (numeroLimpio.length === 10) {
@@ -184,16 +189,10 @@ async function geocodificarCliente(clienteId, boton) {
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
             
-            if (document.getElementById('mapa') && window.mostrarClienteEnMapa) {
+            if (document.getElementById('mapa') && window.mostrarClienteEnMapa && mapInstance) {
                 const nombreCliente = fila.querySelector('td:first-child').textContent;
-                const mapaElement = document.getElementById('mapa');
-                const map = new google.maps.Map(mapaElement, {
-                    zoom: 15,
-                    center: { lat: parseFloat(data.lat), lng: parseFloat(data.lng) },
-                    mapTypeControl: true,
-                    streetViewControl: true
-                });
-                mostrarClienteEnMapa(map, data.lat, data.lng, data.direccion_formateada || direccion, nombreCliente);
+                // No reiniciar el mapa, usar la instancia existente
+                mostrarClienteEnMapa(mapInstance, data.lat, data.lng, data.direccion_formateada || direccion, nombreCliente);
             }
         } else {
             let mensajeError = data.mensaje || "Error en geocodificación";
@@ -316,14 +315,14 @@ function cargarTodosLosClientes() {
             tbody.innerHTML = "";
 
             if (clientes.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8">No hay clientes registrados en el sistema</td></tr>`; // Updated colspan
+                tbody.innerHTML = `<tr><td colspan="8">No hay clientes registrados en el sistema</td></tr>`;
                 return;
             }
             
             fetch("/usuarios")
                 .then(resUsuarios => resUsuarios.json())
                 .then(usuarios => {
-                    usuariosParaAsignacionMasiva = usuarios; // Store for mass assignment select
+                    usuariosParaAsignacionMasiva = usuarios;
 
                     const massAssignSelect = document.getElementById('massAssignUserSelect');
                     if (massAssignSelect) {
@@ -339,7 +338,8 @@ function cargarTodosLosClientes() {
                     clientes.forEach(cliente => {
                         const tr = document.createElement("tr");
                         tr.innerHTML = `
-                            <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td> <td>${cliente.nombre}</td>
+                            <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td>
+                            <td>${cliente.nombre}</td>
                             <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a>` : "-"}</td>
                             <td>${cliente.direccion || "-"}</td>
                             <td>${cliente.tarifa || "-"}</td>
@@ -357,12 +357,12 @@ function cargarTodosLosClientes() {
                 })
                 .catch(errorUsuarios => {
                      console.error("Error al cargar usuarios para asignación:", errorUsuarios);
-                     tbody.innerHTML = `<tr><td colspan="8" class="error">Error al cargar la lista de usuarios.</td></tr>`; // Updated colspan
+                     tbody.innerHTML = `<tr><td colspan="8" class="error">Error al cargar la lista de usuarios.</td></tr>`;
                 });
         })
         .catch(error => {
             console.error("Error al cargar todos los clientes:", error);
-            document.querySelector("#tablaAsignarClientes tbody").innerHTML = `<tr><td colspan="8" class="error">Error al cargar clientes.</td></tr>`; // Updated colspan
+            document.querySelector("#tablaAsignarClientes tbody").innerHTML = `<tr><td colspan="8" class="error">Error al cargar clientes.</td></tr>`;
         });
 }
 
@@ -387,7 +387,7 @@ function inicializarMapa() {
             streetViewControl: true,
         });
     }
-     if (!directionsRendererInstance) {
+    if (!directionsRendererInstance) {
         directionsRendererInstance = new google.maps.DirectionsRenderer({ suppressMarkers: true });
     }
     directionsRendererInstance.setMap(mapInstance);
@@ -406,57 +406,72 @@ function inicializarMapa() {
 
             directionsRendererInstance.setDirections({routes: []});
 
+            if (esAdmin) {
+                new google.maps.Marker({
+                    position: userPos,
+                    map: mapInstance,
+                    title: "Ubicación del Admin",
+                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                });
+            } else {
+                 new google.maps.Marker({
+                    position: userPos,
+                    map: mapInstance,
+                    title: "Tú estás aquí",
+                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                });
+            }
 
-            new google.maps.Marker({
-                position: userPos,
-                map: mapInstance,
-                title: "Tú estás aquí",
-                icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
-            });
             mapInstance.setCenter(userPos);
             mapInstance.setZoom(13);
 
 
             try {
-                if (!usuarioActual || usuarioActual.id === undefined) {
-                     document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo identificar al usuario.</p>';
-                     return;
-                }
-                const response = await fetch(`/clientes/${usuarioActual.id}`);
-                if (!response.ok) throw new Error(`Error al obtener clientes: ${response.status}`);
-                const clientes = await response.json();
-                
-                const clientesConCoords = clientes.filter(c => c.lat && c.lng);
-                
-                if (clientesConCoords.length === 0) {
-                    document.getElementById('info-ruta').innerHTML = `
-                        <p class="info">No tienes clientes asignados con coordenadas válidas para mostrar en el mapa.</p>
-                        <p>Usa el botón "🌍 Geolocalizar" junto a cada dirección en tu lista de clientes.</p>`;
-                    return;
-                }
+                if (esAdmin) {
+                    await cargarYMostrarGestoresEnMapa();
+                    document.getElementById('info-ruta').innerHTML = '<p class="info">Mapa cargado. Actualizando ubicaciones de gestores cada 30 min.</p>';
 
-                clientesConCoords.forEach(cliente => {
-                    const marker = new google.maps.Marker({
-                        position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
-                        map: mapInstance,
-                        title: `${cliente.nombre}\n${cliente.direccion || ''}`,
-                        icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
-                    });
-                    marker.addListener('click', () => {
-                        mostrarRuta(mapInstance, directionsRendererInstance, userPos, cliente);
-                    });
-                });
-                
-                const clienteCercano = encontrarClienteMasCercano(userPos, clientesConCoords);
-                if (clienteCercano) {
-                    mostrarRuta(mapInstance, directionsRendererInstance, userPos, clienteCercano);
                 } else {
-                     document.getElementById('info-ruta').innerHTML = '<p class="info">Calcula la ruta a un cliente haciendo clic en su marcador.</p>';
+                    if (!usuarioActual || usuarioActual.id === undefined) {
+                         document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo identificar al usuario.</p>';
+                         return;
+                    }
+                    const response = await fetch(`/clientes/${usuarioActual.id}`);
+                    if (!response.ok) throw new Error(`Error al obtener clientes: ${response.status}`);
+                    const clientes = await response.json();
+                    
+                    const clientesConCoords = clientes.filter(c => c.lat && c.lng);
+                    
+                    if (clientesConCoords.length === 0) {
+                        document.getElementById('info-ruta').innerHTML = `
+                            <p class="info">No tienes clientes asignados con coordenadas válidas para mostrar en el mapa.</p>
+                            <p>Usa el botón "🌍 Geolocalizar" junto a cada dirección en tu lista de clientes.</p>`;
+                        return;
+                    }
+
+                    clientesConCoords.forEach(cliente => {
+                        const marker = new google.maps.Marker({
+                            position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
+                            map: mapInstance,
+                            title: `${cliente.nombre}\n${cliente.direccion || ''}`,
+                            icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                        });
+                        marker.addListener('click', () => {
+                            mostrarRuta(mapInstance, directionsRendererInstance, userPos, cliente);
+                        });
+                    });
+                    
+                    const clienteCercano = encontrarClienteMasCercano(userPos, clientesConCoords);
+                    if (clienteCercano) {
+                        mostrarRuta(mapInstance, directionsRendererInstance, userPos, clienteCercano);
+                    } else {
+                         document.getElementById('info-ruta').innerHTML = '<p class="info">Calcula la ruta a un cliente haciendo clic en su marcador.</p>';
+                    }
                 }
                 
             } catch (error) {
-                console.error("Error al cargar o procesar clientes en inicializarMapa:", error);
-                document.getElementById('info-ruta').innerHTML = `<p class="error">Error al cargar clientes: ${error.message}</p>`;
+                console.error("Error al cargar o procesar datos en inicializarMapa:", error);
+                document.getElementById('info-ruta').innerHTML = `<p class="error">Error al cargar datos: ${error.message}</p>`;
             }
         },
         (error) => {
@@ -473,7 +488,6 @@ function inicializarMapa() {
         { timeout: 10000, enableHighAccuracy: true }
     );
 }
-
 
 function calcularDistancia(lat1, lon1, lat2, lon2) {
     const R = 6371;
@@ -507,7 +521,6 @@ function encontrarClienteMasCercano(posicionActual, clientes) {
     return clienteMasCercano;
 }
 
-
 function mostrarRuta(map, directionsRenderer, origen, cliente) {
     if (!origen || !cliente || !cliente.lat || !cliente.lng) {
         console.warn("Origen o destino inválido para mostrarRuta.");
@@ -540,7 +553,7 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             instructionsHTML += '</ol>';
 
             const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origen.lat},${origen.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`;
-            const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">🗺️ Abrir en Google Maps</a>`;
+            const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
 
             document.getElementById('info-ruta').innerHTML = `
                 <h3>Ruta a ${cliente.nombre || 'Cliente'}</h3>
@@ -690,7 +703,7 @@ function guardarAsignaciones() {
         console.error("Error al guardar asignaciones:", error);
          const mensajeContenedor = document.getElementById('seccionAsignacion');
          if(mensajeContenedor){
-            let msgEl = mensajeContentar.querySelector('.admin-message');
+            let msgEl = mensajeContenedor.querySelector('.admin-message');
              if(!msgEl){
                 msgEl = document.createElement('p');
                 msgEl.className = 'admin-message error';
@@ -707,7 +720,6 @@ function guardarAsignaciones() {
     });
 }
 
-// New function to toggle all checkboxes
 function toggleAllClients(source) {
     const checkboxes = document.querySelectorAll('.client-checkbox');
     checkboxes.forEach(checkbox => {
@@ -715,7 +727,6 @@ function toggleAllClients(source) {
     });
 }
 
-// New function for mass assignment
 async function asignarClientesMasivamente() {
     const selectedUserElement = document.getElementById('massAssignUserSelect');
     const targetUserId = selectedUserElement.value ? parseInt(selectedUserElement.value) : null;
@@ -874,8 +885,8 @@ function obtenerMensajeAdmin(seccionId, selectorMensaje) {
     let msgEl = contenedor.querySelector(selectorMensaje);
     if (!msgEl) {
         msgEl = document.createElement('p');
-        msgEl.className = 'admin-message'; // Default class
-        const elementoReferencia = contenedor.querySelector('h3'); // Adjust as needed
+        msgEl.className = 'admin-message';
+        const elementoReferencia = contenedor.querySelector('h3');
         if (elementoReferencia) {
             elementoReferencia.parentNode.insertBefore(msgEl, elementoReferencia.nextSibling);
         } else {
@@ -1135,7 +1146,7 @@ function cargarReporte() {
                 tbody.appendChild(tr);
             });
             const msgEl = document.querySelector('.report-message');
-            if(msgEl) msgEl.textContent = ''; // Clear message if successful
+            if(msgEl) msgEl.textContent = '';
         })
         .catch(error => {
             console.error("Error al cargar reporte:", error);
@@ -1220,19 +1231,94 @@ function filtrarClientes() {
     const filtro = document.getElementById('filtroCliente').value.toLowerCase();
     const filas = document.querySelectorAll("#tablaAsignarClientes tbody tr");
     filas.forEach(fila => {
-        if (fila.querySelector('td[colspan="8"]')) { // Updated colspan
+        if (fila.querySelector('td[colspan="8"]')) {
             fila.style.display = "";
             return;
         }
-        const nombreCliente = fila.cells[1].textContent.toLowerCase(); // Adjusted index for new checkbox column
-        const telefonoCliente = fila.cells[2].textContent.toLowerCase(); // Adjusted index
-        const direccionCliente = fila.cells[3].textContent.toLowerCase(); // Adjusted index
+        const nombreCliente = fila.cells[1].textContent.toLowerCase();
+        const telefonoCliente = fila.cells[2].textContent.toLowerCase();
+        const direccionCliente = fila.cells[3].textContent.toLowerCase();
         if (nombreCliente.includes(filtro) || telefonoCliente.includes(filtro) || direccionCliente.includes(filtro)) {
             fila.style.display = "";
         } else {
             fila.style.display = "none";
         }
     });
+}
+
+// Función para obtener y enviar la ubicación del gestor
+function solicitarYEnviarUbicacion() {
+    if (!usuarioActual || esAdmin) {
+        return;
+    }
+
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                console.log(`Ubicación del gestor ${usuarioActual.usuario}: ${lat}, ${lng}`);
+                
+                fetch('/actualizar-ubicacion-usuario', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: usuarioActual.id, lat, lng })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === "ok") {
+                        console.log("Ubicación del gestor actualizada en el servidor.");
+                    } else {
+                        console.warn("Error al enviar ubicación del gestor:", data.mensaje);
+                    }
+                })
+                .catch(error => {
+                    console.error("Error de red al enviar ubicación del gestor:", error);
+                });
+            },
+            (error) => {
+                console.warn("No se pudo obtener la ubicación del gestor:", error.message);
+            },
+            {
+                enableHighAccuracy: false,
+                timeout: 10000,
+                maximumAge: 300000
+            }
+        );
+    } else {
+        console.warn("Geolocalización no soportada por este navegador para el gestor.");
+    }
+}
+
+// Función para cargar y mostrar gestores en el mapa (solo para Admin)
+async function cargarYMostrarGestoresEnMapa() {
+    if (!esAdmin || !mapInstance) return;
+
+    // Limpiar marcadores de gestores anteriores
+    gestoresMarkers.forEach(marker => marker.setMap(null));
+    gestoresMarkers = [];
+
+    try {
+        const response = await fetch('/ubicaciones-gestores');
+        if (!response.ok) throw new Error('Error al obtener ubicaciones de gestores.');
+        const gestores = await response.json();
+
+        gestores.forEach(gestor => {
+            if (gestor.lat && gestor.lng) {
+                const marker = new google.maps.Marker({
+                    position: { lat: parseFloat(gestor.lat), lng: parseFloat(gestor.lng) },
+                    map: mapInstance,
+                    title: `Gestor: ${gestor.nombre}\nÚltima ubicación: ${gestor.ultima_actualizacion ? new Date(gestor.ultima_actualizacion).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) : 'N/A'}`,
+                    icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+                });
+                gestoresMarkers.push(marker);
+            }
+        });
+        console.log(`Mostrando ${gestores.length} ubicaciones de gestores.`);
+
+    } catch (error) {
+        console.error("Error al cargar ubicaciones de gestores para admin:", error);
+    }
 }
 
 
@@ -1250,14 +1336,9 @@ window.inicializarMapa = inicializarMapa;
 window.geocodificarCliente = geocodificarCliente;
 window.mostrarClienteEnMapa = mostrarClienteEnMapa;
 window.filtrarClientes = filtrarClientes;
-window.enviarWhatsapp = enviarWhatsapp; // Make new function global
-window.toggleAllClients = toggleAllClients; // Make new function global
-window.asignarClientesMasivamente = asignarClientesMasivamente; // Make new function global
-
-
-setInterval(() => {
-    if (document.visibilityState === "visible" && usuarioActual && !esAdmin && window.location.pathname.includes("clientes.html")) {
-        console.log("Recargando clientes para usuario...");
-        cargarClientes(usuarioActual.id);
-    }
-}, 60000);
+window.enviarWhatsapp = enviarWhatsapp;
+window.toggleAllClients = toggleAllClients;
+window.asignarClientesMasivamente = asignarClientesMasivamente;
+// Nuevas funciones globales para el rastreo de ubicación
+window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
+window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;

@@ -160,7 +160,7 @@
       <p>Presiona el botón para encontrar clientes cercanos</p>
       <button onclick="inicializarMapa()" 
               style="padding: 10px; background: #4285F4; color: white; border: none; border-radius: 4px;">
-        🗺️ Mostrar Ruta
+        🗺️ Mostrar Ruta / Ubicaciones
       </button>
     </div>
   </div>
@@ -197,15 +197,6 @@
 <p><a href="/">← Volver al inicio</a></p>
 
 <script src="script.js"></script>
-
-<script>
-// Recarga automática cada 60 segundos (solo para usuarios no admin)
-setInterval(() => {
-    if (usuarioActual && !esAdmin && window.location.pathname.includes("clientes.html")) {
-        cargarClientes(usuarioActual.id);
-    }
-}, 60000);
-</script>
 
 </body>
 </html>
