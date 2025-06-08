@@ -6,7 +6,6 @@ let usuariosParaAsignacionMasiva = [];
 let gestoresMarkers = [];
 
 // *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
-// Este valor es el que Google Cloud te dice "debes pasar con el parámetro key=API_KEY"
 window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
 
 // NUEVA FORMA DE CARGAR LA API DE GOOGLE MAPS
@@ -23,7 +22,6 @@ function loadGoogleMapsScript() {
 
     if (!window.Maps_API_KEY) {
         console.error("Maps_API_KEY no está definida. No se puede cargar Google Maps.");
-        // Mostrar mensaje de error al usuario o deshabilitar funcionalidad del mapa
         if (document.getElementById('info-ruta')) {
             document.getElementById('info-ruta').innerHTML = '<p class="error">Error: API Key de Google Maps no configurada. Contacta al administrador.</p>';
         }
@@ -82,24 +80,21 @@ function login() {
 window.googleMapsApiLoadedCallback = function() {
     console.log("Google Maps API cargada y lista.");
     if (window.location.pathname.includes("clientes.html")) {
-        // Solo inicializar el mapa para el admin al cargar la página si la API ya está lista
-        // Para gestores, el mapa se inicializa al hacer clic en el botón "Recargar Mapa / Ubicaciones"
         if (esAdmin) {
             inicializarMapaManual();
-            // El intervalo para actualizar el mapa se gestiona dentro de inicializarMapaManual()
         }
     }
 };
 
 function mostrarMensajeFlotante(mensaje) {
     const floatingMessage = document.getElementById('floatingMessage');
-    if (!floatingMessage) return; // Asegurarse de que el elemento existe
+    if (!floatingMessage) return;
 
     floatingMessage.textContent = mensaje;
     floatingMessage.classList.remove('hidden');
     setTimeout(() => {
         floatingMessage.classList.add('hidden');
-    }, 3000); // Muestra por 3 segundos
+    }, 3000);
 }
 
 window.addEventListener("load", () => {
@@ -118,9 +113,8 @@ window.addEventListener("load", () => {
     if (window.location.pathname.includes("clientes.html")) {
         document.getElementById("nombreUsuario").textContent = usuarioActual.usuario;
         
-        mostrarMensajeFlotante("Hecho con 🧡 por Leonardo Luna"); // Mensaje al cargar la página
+        mostrarMensajeFlotante("Hecho con 🧡 por Leonardo Luna");
 
-        // Configurar la fecha por defecto del calendario
         const today = new Date();
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
         const yyyy = firstDayOfMonth.getFullYear();
@@ -137,15 +131,15 @@ window.addEventListener("load", () => {
             document.getElementById("seccionAsignacion").classList.remove("hidden");
             cargarTodosLosClientes(); 
             cargarUsuarios();
-            cargarKPIsConFecha(); // Carga KPIs generales y de riesgo al inicio con la fecha por defecto
-            loadGoogleMapsScript(); // Cargar API de Google Maps cuando el admin está logueado
+            cargarKPIsConFecha();
+            loadGoogleMapsScript();
         } else {
             document.getElementById("seccionAdmin").classList.add("hidden");
             document.getElementById("seccionAsignacion").classList.add("hidden");
             cargarClientes(usuarioActual.id);
             solicitarYEnviarUbicacion();
             setInterval(solicitarYEnviarUbicacion, 30 * 60 * 1000);
-            loadGoogleMapsScript(); // También cargarla para gestores si van a usar el mapa
+            loadGoogleMapsScript();
         }
     }
 });
@@ -176,7 +170,8 @@ function cargarClientes(usuarioId) {
                       </button>
                       <span id="geo-status-${cliente.id}" class="geo-status">
                         ${cliente.lat && cliente.lng ? 
-                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${CSS.escape(cliente.direccion)}') class="btn-map-shortcut">Ver en Mapa</button>` 
+                            // CORRECCIÓN AQUÍ: Asegura que la clase del botón esté correctamente cerrada.
+                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${CSS.escape(cliente.direccion)}')**"** class="btn-map-shortcut">Ver en Mapa</button>` 
                             : ''}
                       </span>
                     </td>
@@ -260,9 +255,10 @@ async function geocodificarCliente(clienteId, boton) {
         const data = await response.json();
 
         if (data.status === "ok") {
+            // CORRECCIÓN AQUÍ: Asegura que la clase del botón esté correctamente cerrada.
             statusElement.innerHTML = `
                 <span class="geo-status geo-success">✓ Ubicada</span>
-                <button onclick="abrirEnGoogleMaps(${data.lat}, <span class="math-inline">\{data\.lng\}, '</span>{CSS.escape(data.direccion_formateada || direccion)}') class="btn-map-shortcut">Ver en Mapa</button>
+                <button onclick="abrirEnGoogleMaps(${data.lat}, <span class="math-inline">\{data\.lng\}, '</span>{CSS.escape(data.direccion_formateada || direccion)}')**"** class="btn-map-shortcut">Ver en Mapa</button>
             `;
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
@@ -362,18 +358,16 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
 
     document.getElementById('info-ruta').innerHTML = `<h3>Cliente: ${nombreCliente}</h3><p><strong>Dirección:</strong> ${direccion}</p><p>Calculando ruta...</p>`;
 
-    // Se establece un timeout para la geolocalización. Si el navegador no responde, se asume un fallo.
     const geoTimeout = setTimeout(() => {
         console.warn("Tiempo de espera agotado para la geolocalización. Verifique permisos o conexión.");
         document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo obtener su ubicación. Tiempo de espera agotado.</p>';
-        // Aquí podrías detener cualquier spinner si no se detiene automáticamente.
-    }, 15000); // 15 segundos de timeout
+    }, 15000);
 
 
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación se obtiene a tiempo
+                clearTimeout(geoTimeout);
                 const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                 new google.maps.Marker({
                     position: userPos,
@@ -385,11 +379,11 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
                 const directionsService = new google.maps.DirectionsService();
                 const directionsRenderer = new google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
 
-                mostrarRuta(map, directionsRenderer, userPos, { lat: lat, lng: lng, nombre: nombreCliente, direccion: direccion }); // Llamar a mostrarRuta con los argumentos correctos
+                mostrarRuta(map, directionsRenderer, userPos, { lat: lat, lng: lng, nombre: nombreCliente, direccion: direccion });
 
             },
             (error) => {
-                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación falla
+                clearTimeout(geoTimeout);
                 console.warn("Error obteniendo ubicación del usuario:", error.message);
                 let errorMsg = "Error al obtener tu ubicación: ";
                 switch(error.code) {
@@ -503,17 +497,15 @@ function inicializarMapaManual() {
 
     document.getElementById('info-ruta').innerHTML = '<p class="info">Obteniendo tu ubicación...</p>';
 
-    // Se establece un timeout para la geolocalización. Si el navegador no responde, se asume un fallo.
     const geoTimeout = setTimeout(() => {
         console.warn("Tiempo de espera agotado para la geolocalización. Verifique permisos o conexión.");
         document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo obtener su ubicación. Tiempo de espera agotado.</p>';
-        // Aquí podrías detener cualquier spinner si no se detiene automáticamente.
-    }, 15000); // 15 segundos de timeout
+    }, 15000);
 
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             async (pos) => {
-                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación se obtiene a tiempo
+                clearTimeout(geoTimeout);
                 const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
 
                 directionsRendererInstance.setDirections({routes: []});
@@ -580,7 +572,7 @@ function inicializarMapaManual() {
                 }
             },
             (error) => {
-                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación falla
+                clearTimeout(geoTimeout);
                 console.warn("Error al obtener ubicación del usuario:", error.message);
                 let errorMsg = "Error al obtener tu ubicación: ";
                 switch(error.code) {
@@ -920,231 +912,4 @@ function agregarUsuario() {
         if (data.status === "ok") {
             const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
             msgEl.className = 'admin-message success';
-            msgEl.textContent = `✅ Usuario "${data.usuario.nombre}" creado exitosamente.`;
-            
-            nombreInput.value = "";
-            passwordInput.value = "";
-            cargarUsuarios();
-            cargarTodosLosClientes();
-            if (esAdmin) cargarKPIsConFecha();
-        } else {
-            throw new Error(data.mensaje || "Error desconocido al crear usuario");
-        }
-    })
-    .catch(error => {
-        console.error("Error al crear usuario:", error);
-        const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
-        msgEl.className = 'admin-message error';
-        msgEl.textContent = `❌ ${error.message}`;
-    }).finally(() => {
-        if(botonAgregar){
-            botonAgregar.disabled = false;
-            botonAgregar.textContent = '➕ Agregar Usuario';
-        }
-    });
-}
-
-function obtenerMensajeAdmin(seccionId, selectorMensaje) {
-    const contenedor = document.getElementById(seccionId);
-    let msgEl = contenedor.querySelector(selectorMensaje);
-    if (!msgEl) {
-        msgEl = document.createElement('p');
-        msgEl.className = 'admin-message';
-        const elementoReferencia = contenedor.querySelector('h3');
-        if (elementoReferencia) {
-            elementoReferencia.parentNode.insertBefore(msgEl, elementoReferencia.nextSibling);
-        } else {
-            contenedor.appendChild(msgEl);
-        }
-    }
-    setTimeout(() => msgEl.textContent = '', 5000);
-    return msgEl;
-}
-
-
-function eliminarUsuario(id) {
-    if (!confirm(`¿Está seguro que desea eliminar este usuario? Esta acción no se puede deshacer y los clientes asignados a él quedarán sin asignar.`)) return;
-
-    fetch("/usuarios/eliminar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-    })
-    .then(res => {
-        if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
-        return res.json();
-    })
-    .then(data => {
-        if (data.status === "ok") {
-             const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
-             msgEl.className = 'admin-message success';
-             msgEl.textContent = "✅ Usuario eliminado correctamente.";
-            cargarUsuarios();
-            cargarTodosLosClientes();
-            if (esAdmin) cargarKPIsConFecha();
-        } else {
-            throw new Error(data.mensaje || "Error desconocido al eliminar usuario");
-        }
-    })
-    .catch(error => {
-        console.error("Error al eliminar usuario:", error);
-        const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
-        msgEl.className = 'admin-message error';
-        msgEl.textContent = `❌ ${error.message}`;
-    });
-}
-
-function limpiarClientes() {
-    if (!confirm("⚠️ ¿Está seguro que desea eliminar TODOS los clientes de la base de datos? Esta acción es irreversible.")) return;
-
-    const botonLimpiar = document.querySelector('button[onclick="limpiarClientes()"]');
-    if(botonLimpiar){
-        botonLimpiar.disabled = true;
-        botonLimpiar.textContent = 'Limpiando...';
-    }
-
-    fetch("/limpiar-clientes", { method: "POST" })
-        .then(res => {
-            if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
-        return res.json();
-    })
-    .then(data => {
-        if (data.status === "ok") {
-            const msgEl = document.getElementById("mensajeExcel");
-            msgEl.className = 'success';
-            msgEl.textContent = "✅ Todos los clientes han sido eliminados.";
-
-            cargarTodosLosClientes();
-            if (usuarioActual && !esAdmin) {
-                cargarClientes(usuarioActual.id);
-            }
-            if (esAdmin) cargarKPIsConFecha();
-        } else {
-             throw new Error(data.mensaje || "Error desconocido al limpiar clientes");
-        }
-    })
-    .catch(error => {
-        console.error("Error al limpiar clientes:", error);
-        const msgEl = document.getElementById("mensajeExcel");
-        msgEl.className = 'error';
-        msgEl.textContent = `❌ Error al eliminar clientes: ${error.message}`;
-    }).finally(()=>{
-        if(botonLimpiar){
-            botonLimpiar.disabled = false;
-            botonLimpiar.textContent = '🧹 Limpiar Todos los Clientes';
-        }
-    });
-}
-
-function procesarArchivo(event) {
-    const file = event.target.files[0];
-    const mensajeExcel = document.getElementById("mensajeExcel");
-    const excelFileInput = document.getElementById('excelFile');
-    
-    mensajeExcel.textContent = "";
-    mensajeExcel.className = "info";
-
-    if (!file) {
-        mensajeExcel.textContent = "❌ No se seleccionó ningún archivo.";
-        mensajeExcel.className = "error";
-        return;
-    }
-
-    mensajeExcel.textContent = "Procesando archivo Excel...";
-    mensajeExcel.className = "info";
-    
-    excelFileInput.disabled = true;
-
-
-    const reader = new FileReader();
-    reader.onload = e => {
-        try {
-            const data = new Uint8Array(e.target.result);
-            const workbook = XLSX.read(data, { type: "array" });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-            if (rows.length === 0) {
-                mensajeExcel.textContent = "❌ El archivo Excel está vacío o no tiene datos en la primera hoja.";
-                mensajeExcel.className = "error";
-                excelFileInput.disabled = false;
-                excelFileInput.value = "";
-                return;
-            }
-            
-            function detectarColumna(rowSample, posiblesNombres) {
-                const header = Object.keys(rowSample).map(key => key.toLowerCase().trim());
-                for (let nombre of posiblesNombres) {
-                    const nombreLower = nombre.toLowerCase();
-                    const foundKey = Object.keys(rowSample).find(key => key.toLowerCase().trim() === nombreLower);
-                    if (foundKey) return foundKey;
-                }
-                for (let nombre of posiblesNombres) {
-                    const nombreLower = nombre.toLowerCase();
-                    const foundKey = Object.keys(rowSample).find(key => key.toLowerCase().trim().includes(nombreLower));
-                    if (foundKey) return foundKey;
-                }
-                return null;
-            }
-
-            const primerFila = rows[0];
-            const colNombre = detectarColumna(primerFila, ["nombre", "cliente", "nombre completo"]);
-            const colTelefono = detectarColumna(primerFila, ["telefono", "tel", "celular", "teléfono"]);
-            const colDireccion = detectarColumna(primerFila, ["direccion", "dirección", "domicilio"]);
-            const colTarifa = detectarColumna(primerFila, ["tarifa", "monto", "costo"]);
-            const colSaldoExigible = detectarColumna(primerFila, ["saldo exigible", "exigible", "saldo_exigible"]);
-            const colSaldo = detectarColumna(primerFila, ["saldo", "saldo actual", "saldo_actual"]);
-
-
-            if (!colNombre) {
-                mensajeExcel.textContent = "❌ No se encontró una columna de 'Nombre' o 'Cliente' en el Excel.";
-                mensajeExcel.className = "error";
-                excelFileInput.disabled = false;
-                excelFileInput.value = "";
-                return;
-            }
-
-            const clientesExcel = rows.map(row => {
-                const toNumber = (val) => {
-                    if (typeof val === 'string') val = val.replace(/[^0-9.-]+/g,"");
-                    const num = parseFloat(val);
-                    return isNaN(num) ? 0 : num;
-                };
-
-                return {
-                    nombre: String(row[colNombre] || "Desconocido").trim(),
-                    telefono: colTelefono ? String(row[colTelefono] || "").trim() : "",
-                    direccion: colDireccion ? String(row[colDireccion] || "").trim() : "",
-                    tarifa: colTarifa ? toNumber(row[colTarifa]) : 0,
-                    saldo_exigible: colSaldoExigible ? toNumber(row[colSaldoExigible]) : 0,
-                    saldo: colSaldo ? toNumber(row[colSaldo]) : 0,
-                    asignado_a: null
-                };
-            }).filter(cliente => cliente.nombre !== "Desconocido" && cliente.nombre !== "");
-
-            if (clientesExcel.length === 0) {
-                mensajeExcel.textContent = "❌ No se encontraron datos de clientes válidos en el archivo.";
-                mensajeExcel.className = "error";
-                excelFileInput.disabled = false;
-                excelFileInput.value = "";
-                return;
-            }
-
-
-            fetch("/cargar-clientes", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ clientes: clientesExcel })
-            })
-            .then(res => {
-                if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
-                return res.json();
-            })
-            .then(data => {
-                if (data.status === "ok") {
-                    let msg = `✅ ${data.mensaje || `${clientesExcel.length} clientes procesados.`}`;
-                    if (data.clientesConCoordenadas > 0) {
-                        msg += ` (${data.clientesConCoordenadas} geocodificados).`;
-                    } else if (colDireccion) {
-                         msg += `. ${data.clientesConCoordenadas || 0} direcciones pudieron ser geocodificadas inicialmente.
+            msgEl.textContent = `✅ Usuario "${data.usuario.nombre}" creado exitosamente.`
