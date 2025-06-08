@@ -60,10 +60,18 @@ window.googleMapsApiLoadedCallback = function() {
     console.log("Google Maps API cargada y lista.");
     if (window.location.pathname.includes("clientes.html") && esAdmin) {
         inicializarMapaManual();
-        setInterval(inicializarMapaManual, 30 * 60 * 1000);
+        // El intervalo para actualizar el mapa se gestiona dentro de inicializarMapaManual()
     }
 };
 
+function mostrarMensajeFlotante(mensaje) {
+    const floatingMessage = document.getElementById('floatingMessage');
+    floatingMessage.textContent = mensaje;
+    floatingMessage.classList.remove('hidden');
+    setTimeout(() => {
+        floatingMessage.classList.add('hidden');
+    }, 3000); // Muestra por 3 segundos
+}
 
 window.addEventListener("load", () => {
     const userData = JSON.parse(localStorage.getItem("user"));
@@ -80,13 +88,24 @@ window.addEventListener("load", () => {
     
     if (window.location.pathname.includes("clientes.html")) {
         document.getElementById("nombreUsuario").textContent = usuarioActual.usuario;
+        
+        mostrarMensajeFlotante("Hecho con 🧡 por Leonardo Luna"); // Mensaje al cargar la página
+
+        // Configurar la fecha por defecto del calendario
+        const today = new Date();
+        const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const yyyy = firstDayOfMonth.getFullYear();
+        const mm = String(firstDayOfMonth.getMonth() + 1).padStart(2, '0'); // Months start at 0!
+        const dd = String(firstDayOfMonth.getDate()).padStart(2, '0');
+        document.getElementById('fechaInicioBonos').value = `${yyyy}-${mm}-${dd}`;
+
 
         if (esAdmin) {
             document.getElementById("seccionAdmin").classList.remove("hidden");
             document.getElementById("seccionAsignacion").classList.remove("hidden");
             cargarTodosLosClientes(); 
             cargarUsuarios();
-            cargarKPIs(); 
+            cargarKPIsConFecha(); // Carga KPIs generales y de riesgo al inicio con la fecha por defecto
         } else {
             document.getElementById("seccionAdmin").classList.add("hidden");
             document.getElementById("seccionAsignacion").classList.add("hidden");
@@ -327,7 +346,7 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
 function cargarTodosLosClientes() {
     fetch("/clientes")
         .then(res => {
-            if (!res.ok) throw new Error('Error al cargar todos los clientes');
+            if (!res.ok) throw new Error(`Error ${res.status}`);
             return res.json();
         })
         .then(allClients => {
@@ -587,7 +606,7 @@ function registrarLlamada(btn, clienteId) {
                 if (document.querySelectorAll("#tablaClientes tbody tr").length === 0) {
                     document.querySelector("#tablaClientes tbody").innerHTML = `<tr><td colspan="10">¡Todos los clientes asignados han sido procesados!</td></tr>`;
                 }
-                if (esAdmin) cargarKPIs();
+                if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin al registrar llamada
             }, 500);
         } else {
             const errorCell = fila.querySelector('td:last-child');
@@ -663,7 +682,7 @@ function guardarAsignaciones() {
         }
         cargarTodosLosClientes();
         if (!esAdmin && usuarioActual) cargarClientes(usuarioActual.id);
-        if (esAdmin) cargarKPIs();
+        if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
     })
     .catch(error => {
         console.error("Error al guardar asignaciones:", error);
@@ -748,7 +767,7 @@ async function asignarClientesMasivamente() {
         toggleAllClients(document.getElementById('selectAllClients'));
         selectedUserElement.value = '';
         cargarTodosLosClientes();
-        if (esAdmin) cargarKPIs();
+        if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
     } catch (error) {
         console.error("Error al asignar clientes masivamente:", error);
         massAssignMessage.className = 'error';
@@ -830,7 +849,7 @@ function agregarUsuario() {
             passwordInput.value = "";
             cargarUsuarios();
             cargarTodosLosClientes();
-            if (esAdmin) cargarKPIs();
+            if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
         } else {
             throw new Error(data.mensaje || "Error desconocido al crear usuario");
         }
@@ -885,7 +904,7 @@ function eliminarUsuario(id) {
              msgEl.textContent = "✅ Usuario eliminado correctamente.";
             cargarUsuarios();
             cargarTodosLosClientes();
-            if (esAdmin) cargarKPIs();
+            if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
         } else {
             throw new Error(data.mensaje || "Error desconocido al eliminar usuario");
         }
@@ -922,7 +941,7 @@ function limpiarClientes() {
                 if (usuarioActual && !esAdmin) {
                     cargarClientes(usuarioActual.id);
                 }
-                if (esAdmin) cargarKPIs();
+                if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
             } else {
                  throw new Error(data.mensaje || "Error desconocido al limpiar clientes");
             }
@@ -943,10 +962,10 @@ function limpiarClientes() {
 function procesarArchivo(event) {
     const file = event.target.files[0];
     const mensajeExcel = document.getElementById("mensajeExcel");
-    const excelFileInput = document.getElementById('excelFile'); // Obtener el input de archivo
+    const excelFileInput = document.getElementById('excelFile');
     
-    mensajeExcel.textContent = ""; // Limpiar mensaje anterior
-    mensajeExcel.className = "info"; // Clase por defecto
+    mensajeExcel.textContent = "";
+    mensajeExcel.className = "info";
 
     if (!file) {
         mensajeExcel.textContent = "❌ No se seleccionó ningún archivo.";
@@ -957,7 +976,6 @@ function procesarArchivo(event) {
     mensajeExcel.textContent = "Procesando archivo Excel...";
     mensajeExcel.className = "info";
     
-    // Deshabilitar input y mostrar estado
     excelFileInput.disabled = true;
 
 
@@ -973,8 +991,8 @@ function procesarArchivo(event) {
             if (rows.length === 0) {
                 mensajeExcel.textContent = "❌ El archivo Excel está vacío o no tiene datos en la primera hoja.";
                 mensajeExcel.className = "error";
-                excelFileInput.disabled = false; // Re-habilitar
-                excelFileInput.value = ""; // Resetear el input file
+                excelFileInput.disabled = false;
+                excelFileInput.value = "";
                 return;
             }
             
@@ -1005,7 +1023,7 @@ function procesarArchivo(event) {
             if (!colNombre) {
                 mensajeExcel.textContent = "❌ No se encontró una columna de 'Nombre' o 'Cliente' en el Excel.";
                 mensajeExcel.className = "error";
-                excelFileInput.disabled = false; // Re-habilitar
+                excelFileInput.disabled = false;
                 excelFileInput.value = "";
                 return;
             }
@@ -1031,7 +1049,7 @@ function procesarArchivo(event) {
             if (clientesExcel.length === 0) {
                 mensajeExcel.textContent = "❌ No se encontraron datos de clientes válidos en el archivo.";
                 mensajeExcel.className = "error";
-                excelFileInput.disabled = false; // Re-habilitar
+                excelFileInput.disabled = false;
                 excelFileInput.value = "";
                 return;
             }
@@ -1056,9 +1074,9 @@ function procesarArchivo(event) {
                     }
                     mensajeExcel.textContent = msg;
                     mensajeExcel.className = "success";
-                    excelFileInput.value = ""; // Reset file input
+                    excelFileInput.value = "";
                     cargarTodosLosClientes();
-                    if (esAdmin) cargarKPIs();
+                    if (esAdmin) cargarKPIsConFecha();
                 } else {
                     throw new Error(data.mensaje || "Error desconocido del servidor");
                 }
@@ -1067,13 +1085,13 @@ function procesarArchivo(event) {
                 mensajeExcel.textContent = `❌ Error al cargar clientes: ${error.message}`;
                 mensajeExcel.className = "error";
             }).finally(()=>{
-                 excelFileInput.disabled = false; // Asegurar que el input se re-habilita
+                 excelFileInput.disabled = false;
             });
         } catch (error) {
             console.error("Error al procesar archivo Excel:", error);
             mensajeExcel.textContent = "❌ Error crítico al leer el archivo Excel. Asegúrate que el formato es correcto.";
             mensajeExcel.className = "error";
-            excelFileInput.disabled = false; // Re-habilitar
+            excelFileInput.disabled = false;
             excelFileInput.value = "";
         }
     };
@@ -1294,11 +1312,17 @@ async function cargarYMostrarGestoresEnMapa() {
     }
 }
 
-async function cargarKPIs() {
+// Modificada para aceptar un parámetro de fecha de inicio
+async function cargarKPIs(fechaInicio = null) {
     if (!esAdmin) return;
 
+    let url = '/kpis';
+    if (fechaInicio) {
+        url += `?fechaInicio=${fechaInicio}`;
+    }
+
     try {
-        const response = await fetch('/kpis');
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Error al obtener los KPIs');
         const kpis = await response.json();
 
@@ -1344,8 +1368,8 @@ async function cargarKPIs() {
                     <td>${gestor.totalLlamadas}</td>
                     <td>$${gestor.salarioBaseGanado}</td>
                     <td>$${gestor.porcentajeBonoGanado}</td>
-                    <td>$${gestor.proximoNivelTarget}</td>
-                    <td>${gestor.proximoNivelPorcentaje}%</td>
+                    <td>${gestor.proximoNivelTarget !== null ? `$${gestor.proximoNivelTarget}` : 'N/A'}</td>
+                    <td>${gestor.proximoNivelPorcentaje !== null ? `${gestor.proximoNivelPorcentaje}%` : 'N/A'}</td>
                     <td>$${gestor.projectedAmount}</td>
                     <td>
                         <span class="trend-indicator trend-${gestor.trendStatus}">
@@ -1378,6 +1402,12 @@ async function cargarKPIs() {
     }
 }
 
+// Nueva función para llamar a cargarKPIs con la fecha del calendario
+function cargarKPIsConFecha() {
+    const fechaInicio = document.getElementById('fechaInicioBonos').value;
+    cargarKPIs(fechaInicio);
+}
+
 
 window.login = login;
 window.cerrarSesion = cerrarSesion;
@@ -1398,4 +1428,5 @@ window.toggleAllClients = toggleAllClients;
 window.asignarClientesMasivamente = asignarClientesMasivamente;
 window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
 window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;
-window.cargarKPIs = cargarKPIs;
+window.cargarKPIs = cargarKPIs; // Exportar la función base
+window.cargarKPIsConFecha = cargarKPIsConFecha; // Exportar la nueva función para el botón

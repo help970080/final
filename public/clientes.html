@@ -20,6 +20,10 @@
 </head>
 <body>
 
+<div id="floatingMessage" class="hidden">
+  Hecho con 🧡 por Leonardo Luna
+</div>
+
 <h1>📞 Dashboard de Llamadas</h1>
 <p>Bienvenido, <span id="nombreUsuario"></span> | 
   <button onclick="cerrarSesion()" style="float:right;">🔒 Cerrar Sesión</button>
@@ -88,6 +92,11 @@
 
   <div class="kpi-section-card kpi-performance-background">
     <h3>📈 Rendimiento de Gestores y Bonos</h3>
+    <div class="form-row" style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+        <label for="fechaInicioBonos" style="white-space: nowrap;">Fecha Inicio Periodo:</label>
+        <input type="date" id="fechaInicioBonos" style="flex-grow: 1; min-width: 150px;">
+        <button onclick="cargarKPIsConFecha()" class="button-primary" style="flex-shrink: 0;">Aplicar Fecha</button>
+    </div>
     <div style="max-height: 400px; overflow-y: auto;">
       <table id="tablaRendimientoGestores">
         <thead>

@@ -235,6 +235,49 @@ input:focus, select:focus {
   animation: spin 1s linear infinite;
 }
 
+/* Estilos para las secciones de administración */
+.admin-section-card { /* Para el div de "Subir Clientes" y "Gestionar Usuarios" */
+  background: #f5f5f5;
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 20px;
+}
+
+/* Estilos para la sección de Asignación Masiva */
+.mass-assign-section {
+  margin-bottom: 15px;
+  margin-top: 20px;
+  border-top: 1px solid #eee;
+  padding-top: 15px;
+}
+.mass-assign-section select {
+  width: auto; /* Para que no ocupe todo el ancho */
+  margin-right: 10px;
+  display: inline-block; /* Para que esté al lado del botón */
+}
+.mass-assign-section button {
+  width: auto;
+  padding: 8px 15px;
+  font-size: 0.85rem;
+}
+.form-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+  align-items: center; /* Alinear elementos verticalmente */
+}
+.form-row input {
+  flex: 1; /* Para que los inputs tomen el espacio disponible */
+  width: auto; /* Anular el 100% por defecto de input */
+}
+.form-row button {
+  width: auto; /* Anular el 100% por defecto de button */
+  padding: 8px 15px;
+  font-size: 0.85rem;
+  margin: 0; /* Eliminar márgenes si los hay */
+}
+
+
 /* Estilos para las tarjetas de KPI */
 .kpi-section-card { /* Nueva clase para los div contenedores de KPIs */
   background: #f5f5f5; /* Color base más suave */
@@ -372,6 +415,26 @@ input:focus, select:focus {
   color: white;
 }
 
+/* Mensaje flotante de "Hecho con 🧡 por Leonardo Luna" */
+#floatingMessage {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  font-size: 0.9em;
+  z-index: 1000;
+  opacity: 1;
+  transition: opacity 1s ease-in-out;
+}
+#floatingMessage.hidden {
+  opacity: 0;
+  visibility: hidden; /* Ocultar completamente después de la transición */
+}
+
+
 /* Responsive */
 @media (max-width: 768px) {
   .container {
@@ -423,5 +486,12 @@ input:focus, select:focus {
   .form-row {
     flex-direction: column;
     gap: 10px;
+  }
+
+  #floatingMessage {
+    bottom: 10px;
+    right: 10px;
+    padding: 8px 12px;
+    font-size: 0.8em;
   }
 }

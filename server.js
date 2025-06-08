@@ -19,7 +19,7 @@ const DB_FILE = '/opt/render/project/src/data/database.json';
 let dbCache = null;
 let lastDbUpdate = 0;
 
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY; 
+const Maps_API_KEY = process.env.Maps_API_KEY; 
 
 // Definición de los niveles de bono y cuotas
 const BONO_TIERS = [
@@ -138,11 +138,11 @@ app.post('/cargar-clientes', async (req, res) => {
         for (const cliente of nuevosClientes) {
             let lat = null;
             let lng = null;
-            if (cliente.direccion && GOOGLE_MAPS_API_KEY) { 
+            if (cliente.direccion && Maps_API_KEY) { 
                 try {
                     let direccionCompleta = `${cliente.direccion}, CDMX, México`.replace(/,\s+/g, ', ').replace(/\s+/g, '+');
                     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-                        params: { address: direccionCompleta, key: GOOGLE_MAPS_API_KEY, region: 'mx' }
+                        params: { address: direccionCompleta, key: Maps_API_KEY, region: 'mx' }
                     });
                     if (response.data.status === "OK") {
                         const location = response.data.results[0].geometry.location;
@@ -182,7 +182,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
                 mensaje: "La dirección proporcionada es demasiado corta o inválida. Debe tener al menos 5 caracteres." 
             });
         }
-        if (!GOOGLE_MAPS_API_KEY) {
+        if (!Maps_API_KEY) {
             return res.status(500).json({ status: "error", mensaje: "API Key de Google Maps no configurada en el servidor." });
         }
 
@@ -193,7 +193,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
         const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
             params: {
                 address: direccionCompleta.replace(/\s+/g, '+'),
-                key: GOOGLE_MAPS_API_KEY, 
+                key: Maps_API_KEY, 
                 region: 'mx',
                 components: 'country:MX',
                 bounds: '19.0,-99.5|19.6,-98.9'
@@ -422,24 +422,49 @@ app.get('/kpis', (req, res) => {
     const llamadas = db.llamadas || [];
     const usuarios = db.usuarios.filter(u => u.id !== 0) || []; // Solo gestores, excluye admin
 
+    // Obtener la fecha de inicio del período desde la query (si existe)
+    const fechaInicioStr = req.query.fechaInicio;
+    let fechaInicioPeriodo = null;
+    if (fechaInicioStr) {
+        try {
+            // Asegurarse de que la fecha se interprete como UTC para evitar problemas de zona horaria
+            fechaInicioPeriodo = new Date(fechaInicioStr + 'T00:00:00.000Z'); 
+            if (isNaN(fechaInicioPeriodo.getTime())) { // Validar fecha
+                fechaInicioPeriodo = null;
+            }
+        } catch (e) {
+            console.error("Error al parsear fechaInicio:", e);
+            fechaInicioPeriodo = null;
+        }
+    }
+    
+    // Filtrar llamadas por período si se proporcionó fecha de inicio
+    const llamadasEnPeriodo = fechaInicioPeriodo 
+        ? llamadas.filter(l => {
+            const fechaLlamada = new Date(l.fecha + 'T00:00:00.000Z'); // Interpretar fecha de llamada como UTC
+            return fechaLlamada.getTime() >= fechaInicioPeriodo.getTime();
+        })
+        : llamadas;
+
+
     const clientesTotales = clientes.length;
     const clientesAsignados = clientes.filter(c => c.asignado_a !== null).length;
     const clientesPendientesAsignar = clientes.filter(c => c.asignado_a === null).length;
 
-    const llamadasTotales = llamadas.length;
-    const montoTotalCobrado = llamadas.reduce((sum, l) => sum + (parseFloat(l.monto_cobrado) || 0), 0);
+    const llamadasTotales = llamadasEnPeriodo.length;
+    const montoTotalCobrado = llamadasEnPeriodo.reduce((sum, l) => sum + (parseFloat(l.monto_cobrado) || 0), 0);
     
-    const llamadasExito = llamadas.filter(l => l.resultado === 'Éxito').length;
+    const llamadasExito = llamadasEnPeriodo.filter(l => l.resultado === 'Éxito').length;
     const efectividadLlamadas = llamadasTotales > 0 ? (llamadasExito / llamadasTotales * 100).toFixed(2) : 0;
 
     const hoy = new Date().toISOString().split("T")[0];
-    const clientesProcesadosHoy = llamadas.filter(l => l.fecha === hoy).length;
+    const clientesProcesadosHoy = llamadasEnPeriodo.filter(l => l.fecha === hoy).length;
 
     // Calcular KPIs de Riesgo (Semaforo)
     let riesgoClientes = { verde: 0, amarillo: 0, rojo: 0, montoRiesgoAlto: 0 };
     clientes.forEach(cliente => {
         let puntajeRiesgo = 0;
-        const llamadasCliente = llamadas.filter(l => l.cliente_id === cliente.id);
+        const llamadasCliente = llamadasEnPeriodo.filter(l => l.cliente_id === cliente.id);
 
         llamadasCliente.forEach(llamada => {
             switch (llamada.resultado) {
@@ -477,7 +502,7 @@ app.get('/kpis', (req, res) => {
 
     // Calcular KPIs de Rendimiento de Gestores y Bonos
     const rendimientoGestores = usuarios.map(gestor => {
-        const llamadasGestor = llamadas.filter(l => l.usuario_id === gestor.id);
+        const llamadasGestor = llamadasEnPeriodo.filter(l => l.usuario_id === gestor.id);
         const montoCobradoGestor = llamadasGestor.reduce((sum, l) => sum + (parseFloat(l.monto_cobrado) || 0), 0);
         const llamadasExitoGestor = llamadasGestor.filter(l => l.resultado === 'Éxito').length;
         const efectividadGestor = llamadasGestor.length > 0 ? (llamadasExitoGestor / llamadasGestor.length * 100).toFixed(2) : 0;
@@ -521,26 +546,43 @@ app.get('/kpis', (req, res) => {
         }
 
         // Proyección a 15 días (tendencia)
-        // ASUNCIÓN: Días transcurridos. Para una tendencia real, necesitaríamos el día actual del periodo de 15 días.
-        // Aquí usaremos una aproximación: si tenemos registros de hoy, asumimos que hoy es un día activo.
-        // Si no hay llamadas hoy, la proyección sería 0.
-        const firstCallDate = llamadasGestor.length > 0 ? new Date(Math.min(...llamadasGestor.map(l => new Date(l.fecha)))) : null;
-        const today = new Date();
-        let daysTranscurred = 1; // Asumimos al menos 1 día para evitar división por cero
-        if (firstCallDate) {
-            daysTranscurred = Math.floor((today.getTime() - firstCallDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-            daysTranscurred = Math.min(daysTranscurred, PERIOD_DAYS); // No exceder el periodo total
-        }
+        // Días transcurridos en el PERIODO SELECCIONADO por el admin
+        let daysTranscurredInPeriod = 0;
+        const todayUTC = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()); // Fecha actual en UTC
 
+        if (fechaInicioPeriodo) {
+            daysTranscurredInPeriod = Math.floor((todayUTC - fechaInicioPeriodo.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            // Asegurarse de que no exceda el número de días del periodo y que sea al menos 1
+            daysTranscurredInPeriod = Math.min(daysTranscurredInPeriod, PERIOD_DAYS); 
+            daysTranscurredInPeriod = Math.max(1, daysTranscurredInPeriod); 
+        } else {
+            // Si no hay fecha de inicio, la proyección no es tan significativa,
+            // pero podemos usar el total de días desde la primera llamada o 1 si no hay llamadas.
+            const firstCallDateGestor = llamadasGestor.length > 0 
+                ? new Date(Math.min(...llamadasGestor.map(l => new Date(l.fecha + 'T00:00:00.000Z').getTime()))) 
+                : null;
+            if (firstCallDateGestor) {
+                daysTranscurredInPeriod = Math.floor((todayUTC - firstCallDateGestor.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                daysTranscurredInPeriod = Math.min(daysTranscurredInPeriod, PERIOD_DAYS);
+                daysTranscurredInPeriod = Math.max(1, daysTranscurredInPeriod);
+            } else {
+                daysTranscurredInPeriod = 1; 
+            }
+        }
+        
         let projectedAmount = 0;
-        if (daysTranscurred > 0) {
-             projectedAmount = (montoCobradoGestor / daysTranscurred) * PERIOD_DAYS;
+        if (montoCobradoGestor > 0 && daysTranscurredInPeriod > 0) {
+            projectedAmount = (montoCobradoGestor / daysTranscurredInPeriod) * PERIOD_DAYS;
+        } else if (montoCobradoGestor === 0 && daysTranscurredInPeriod > 0) {
+             projectedAmount = 0; // Si no ha cobrado nada, la proyección es 0
         }
+        // Si daysTranscurredInPeriod es 0 (no se debería dar por Math.max(1, ...)), projectedAmount sería 0.
 
-        let trendStatus = 'neutral'; // verde, amarillo, rojo
-        if (projectedAmount >= (proximoNivelTarget || BONO_TIERS[0].target) * 0.95) { // 95% del próximo objetivo
+        let trendStatus = 'neutral';
+        const currentTargetForProjection = proximoNivelTarget || BONO_TIERS[0].target;
+        if (projectedAmount >= currentTargetForProjection * 0.95) {
             trendStatus = 'verde';
-        } else if (projectedAmount >= (proximoNivelTarget || BONO_TIERS[0].target) * 0.75) { // 75% del próximo objetivo
+        } else if (projectedAmount >= currentTargetForProjection * 0.75) {
             trendStatus = 'amarillo';
         } else {
             trendStatus = 'rojo';
@@ -558,7 +600,7 @@ app.get('/kpis', (req, res) => {
             proximoNivelTarget: proximoNivelTarget,
             proximoNivelPorcentaje: proximoNivelPorcentaje,
             projectedAmount: projectedAmount.toFixed(2),
-            trendStatus: trendStatus // Nuevo campo para resaltar
+            trendStatus: trendStatus
         };
     });
 
@@ -571,17 +613,17 @@ app.get('/kpis', (req, res) => {
         efectividadLlamadas,
         clientesProcesadosHoy,
         riesgoClientes,
-        rendimientoGestores // Añadimos el rendimiento de los gestores
+        rendimientoGestores
     });
 });
 
 
 app.listen(PORT, () => {
     console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
-    console.log(`Google Maps API Key (server): ${GOOGLE_MAPS_API_KEY ? 'Cargada' : 'ERROR: No cargada'}`);
+    console.log(`Google Maps API Key (server): ${Maps_API_KEY ? 'Cargada' : 'ERROR: No cargada'}`);
     const dataDir = path.dirname(DB_FILE);
     if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dir, { recursive: true });
+        fs.mkdirSync(dataDir, { recursive: true });
         console.log(`📂 Directorio de datos creado en: ${dataDir}`);
     }
     console.log(`💾 Ruta de base de datos: ${DB_FILE}`);
