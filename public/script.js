@@ -6,7 +6,7 @@ let usuariosParaAsignacionMasiva = [];
 let gestoresMarkers = [];
 
 // *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
-window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
+window.Maps_API_KEY = 'TU_API_KEY_REAL_AQUI'; // <-- ¡Reemplaza con tu clave real!
 
 // NUEVA FORMA DE CARGAR LA API DE GOOGLE MAPS
 // Esto asegura que la clave API esté en la URL desde el principio.
@@ -144,6 +144,7 @@ window.addEventListener("load", () => {
     }
 });
 
+// Función auxiliar para crear el botón "Ver en Mapa"
 function crearBotonVerEnMapa(lat, lng, direccion) {
     const button = document.createElement('button');
     button.textContent = 'Ver en Mapa';
@@ -169,6 +170,13 @@ function cargarClientes(usuarioId) {
 
             clientes.forEach(cliente => {
                 const tr = document.createElement("tr");
+                
+                // TD de Nombre
+                const nombreTd = document.createElement('td');
+                nombreTd.textContent = cliente.nombre;
+                tr.appendChild(nombreTd);
+
+                // TD de Teléfono
                 const telefonoTd = document.createElement('td');
                 if (cliente.telefono) {
                     const telLink = document.createElement('a');
@@ -185,7 +193,9 @@ function cargarClientes(usuarioId) {
                 } else {
                     telefonoTd.textContent = "-";
                 }
+                tr.appendChild(telefonoTd);
 
+                // TD de Dirección
                 const direccionTd = document.createElement('td');
                 direccionTd.textContent = cliente.direccion || "-";
                 
@@ -200,24 +210,26 @@ function cargarClientes(usuarioId) {
                 geoStatusSpan.className = 'geo-status';
                 if (cliente.lat && cliente.lng) {
                     geoStatusSpan.textContent = '✓ Ubicada ';
+                    // Adjuntar el botón "Ver en Mapa" de forma programática
                     geoStatusSpan.appendChild(crearBotonVerEnMapa(cliente.lat, cliente.lng, cliente.direccion));
                 }
                 direccionTd.appendChild(geoStatusSpan);
-
-
-                tr.appendChild(document.createElement('td')).textContent = cliente.nombre;
-                tr.appendChild(telefonoTd);
                 tr.appendChild(direccionTd);
+
+
+                // TDs restantes (Tarifa, Saldo Exigible, Saldo)
                 tr.appendChild(document.createElement('td')).textContent = cliente.tarifa || "-";
                 tr.appendChild(document.createElement('td')).textContent = cliente.saldo_exigible || "-";
                 tr.appendChild(document.createElement('td')).textContent = cliente.saldo || "-";
 
+                // TD de Monto
                 const montoInput = document.createElement('input');
                 montoInput.type = 'number';
                 montoInput.className = 'monto';
                 montoInput.dataset.id = cliente.id;
                 tr.appendChild(document.createElement('td')).appendChild(montoInput);
 
+                // TD de Resultado
                 const resultadoSelect = document.createElement('select');
                 resultadoSelect.className = 'resultado';
                 resultadoSelect.dataset.id = cliente.id;
@@ -230,12 +242,14 @@ function cargarClientes(usuarioId) {
                 `;
                 tr.appendChild(document.createElement('td')).appendChild(resultadoSelect);
 
+                // TD de Observaciones
                 const observacionesInput = document.createElement('input');
                 observacionesInput.type = 'text';
                 observacionesInput.className = 'observaciones';
                 observacionesInput.dataset.id = cliente.id;
                 tr.appendChild(document.createElement('td')).appendChild(observacionesInput);
 
+                // TD de Acción (Registrar)
                 const registrarBtn = document.createElement('button');
                 registrarBtn.textContent = 'Registrar';
                 registrarBtn.onclick = () => registrarLlamada(registrarBtn, cliente.id);
@@ -278,12 +292,12 @@ function enviarWhatsapp(telefono, nombreCliente) {
 async function geocodificarCliente(clienteId, boton) {
     const fila = boton.closest('tr');
     const celdas = fila.querySelectorAll('td');
-    let direccion = celdas[2].textContent.split('🌍')[0].trim(); // Intenta obtener la dirección actual de la celda
+    let direccion = celdas[2].firstChild.textContent.trim(); // Obtener la dirección correctamente si no está dentro de otro elemento
     const statusElement = document.getElementById(`geo-status-${clienteId}`);
     const botonGeo = fila.querySelector('.btn-geo');
 
-    // Limpiar contenido anterior del statusElement antes de actualizar
-    statusElement.innerHTML = ''; 
+    statusElement.innerHTML = ''; // Limpiar contenido anterior
+    statusElement.className = "geo-status"; // Resetear clases
 
     if (!direccion || direccion === "-") {
         statusElement.textContent = "Sin dirección";
@@ -309,7 +323,7 @@ async function geocodificarCliente(clienteId, boton) {
 
         if (data.status === "ok") {
             statusElement.className = "geo-status geo-success";
-            statusElement.textContent = '✓ Ubicada '; // Espacio al final para el botón
+            statusElement.textContent = '✓ Ubicada ';
             statusElement.appendChild(crearBotonVerEnMapa(data.lat, data.lng, data.direccion_formateada || direccion));
             
             botonGeo.innerHTML = '🌍 Ubicada';
@@ -335,7 +349,6 @@ async function geocodificarCliente(clienteId, boton) {
         console.error("Error en fetch geocodificarCliente:", error);
     } finally {
         botonGeo.disabled = false;
-         // Si falló, restablecer el color del botón
          if (!statusElement.textContent.includes('✓ Ubicada')) { 
              botonGeo.style.backgroundColor = '';
          }
@@ -375,7 +388,7 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             document.getElementById('info-ruta').innerHTML = `
                 <h3>Ruta a ${cliente.nombre}</h3>
                 <p><strong>Desde:</strong> Tu ubicación actual</p>
-                <p><strong>Hacia:</strong> ${direccion || 'No disponible'}</p>
+                <p><strong>Hacia:</strong> ${cliente.direccion || 'No disponible'}</p>
                 <p><strong>Distancia Total:</strong> ${leg.distance.text}</p>
                 <p><strong>Duración Estimada:</strong> ${leg.duration.text}</p>
                 ${navigationLink}
@@ -385,7 +398,7 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             console.warn('Error al calcular la ruta en mostrarRuta: ' + status);
             document.getElementById('info-ruta').innerHTML = `
                 <h3>Cliente: ${cliente.nombre}</h3>
-                <p><strong>Dirección:</strong> ${direccion}</p>
+                <p><strong>Dirección:</strong> ${cliente.direccion}</p>
                 <p class="info">No se pudo calcular la ruta desde tu ubicación. Verifica los permisos de ubicación.</p>`;
         }
     });
