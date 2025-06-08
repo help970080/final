@@ -116,6 +116,22 @@ button:active {
   background-color: #128c7e;
 }
 
+.btn-map-shortcut {
+  padding: 4px 8px; /* Un poco más pequeño que los botones normales */
+  font-size: 0.75rem; /* Fuente más pequeña */
+  margin-left: 5px;
+  background-color: #4285F4; /* Azul de Google */
+  color: white;
+  border-radius: 4px;
+  transition: all 0.3s;
+}
+
+.btn-map-shortcut:hover {
+  background-color: #3367D6;
+  transform: translateY(0); /* No queremos el efecto de "levantar" aquí */
+  box-shadow: none;
+}
+
 
 /* Tablas modernas */
 table {

@@ -141,7 +141,9 @@ function cargarClientes(usuarioId) {
                         🌍 Geolocalizar
                       </button>
                       <span id="geo-status-${cliente.id}" class="geo-status">
-                        ${cliente.lat && cliente.lng ? '✓ Ubicada' : ''}
+                        ${cliente.lat && cliente.lng ? 
+                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${cliente.direccion}')" class="btn-map-shortcut">Ver en Mapa</button>` 
+                            : ''}
                       </span>
                     </td>
                     <td>${cliente.tarifa || "-"}</td>
@@ -217,20 +219,21 @@ async function geocodificarCliente(clienteId, boton) {
     try {
         const response = await fetch('/actualizar-coordenadas', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ clienteId, direccion })
         });
 
         const data = await response.json();
 
         if (data.status === "ok") {
-            statusElement.textContent = `✓ Ubicada (${data.direccion_formateada || 'Coords: ' + data.lat.toFixed(5) + ', ' + data.lng.toFixed(5)})`;
-            statusElement.className = "geo-status geo-success";
+            statusElement.innerHTML = `
+                <span class="geo-status geo-success">✓ Ubicada</span>
+                <button onclick="abrirEnGoogleMaps(${data.lat}, ${data.lng}, '${data.direccion_formateada || direccion}')" class="btn-map-shortcut">Ver en Mapa</button>
+            `;
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
             
-            // Aquí se pasa 'mapInstance' al llamar a mostrarClienteEnMapa
-            if (document.getElementById('mapa') && mapInstance) { // Simplificado: ya no se necesita window.mostrarClienteEnMapa
+            if (document.getElementById('mapa') && mapInstance) {
                 const nombreCliente = fila.querySelector('td:first-child').textContent;
                 mostrarClienteEnMapa(mapInstance, data.lat, data.lng, data.direccion_formateada || direccion, nombreCliente);
             }
@@ -284,7 +287,7 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             });
             instructionsHTML += '</ol>';
 
-            const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origen.lat},${origen.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`;
+            const googleMapsUrl = `http://maps.google.com/maps?saddr=${origen.lat},${origen.lng}&daddr=${destino.lat},${destino.lng}&dirflg=d`;
             const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
 
             document.getElementById('info-ruta').innerHTML = `
@@ -1271,8 +1274,8 @@ function solicitarYEnviarUbicacion() {
                 console.log(`Ubicación del gestor ${usuarioActual.usuario}: ${lat}, ${lng}`);
                 
                 fetch('/actualizar-ubicacion-usuario', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ userId: usuarioActual.id, lat, lng })
                 })
                 .then(res => res.json())
@@ -1425,6 +1428,14 @@ function cargarKPIsConFecha() {
     cargarKPIs(fechaInicio);
 }
 
+// Nueva función para abrir Google Maps desde las coordenadas
+function abrirEnGoogleMaps(lat, lng, direccion) {
+    // Usar la URL de Google Maps para buscar un lugar por coordenadas.
+    // 'query' es preferible para buscar un punto específico.
+    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    window.open(googleMapsUrl, '_blank');
+}
+
 
 window.login = login;
 window.cerrarSesion = cerrarSesion;
@@ -1439,6 +1450,7 @@ window.registrarLlamada = registrarLlamada;
 window.inicializarMapaManual = inicializarMapaManual;
 window.geocodificarCliente = geocodificarCliente;
 window.mostrarClienteEnMapa = mostrarClienteEnMapa; // Hacerla global
+window.mostrarRuta = mostrarRuta; // ¡Asegurarnos de que también sea global!
 window.filtrarClientes = filtrarClientes;
 window.enviarWhatsapp = enviarWhatsapp;
 window.toggleAllClients = toggleAllClients;
@@ -1447,3 +1459,4 @@ window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
 window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;
 window.cargarKPIs = cargarKPIs;
 window.cargarKPIsConFecha = cargarKPIsConFecha;
+window.abrirEnGoogleMaps = abrirEnGoogleMaps; // Hacerla global
