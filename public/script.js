@@ -176,7 +176,7 @@ function cargarClientes(usuarioId) {
                       </button>
                       <span id="geo-status-${cliente.id}" class="geo-status">
                         ${cliente.lat && cliente.lng ? 
-                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${cliente.direccion}')" class="btn-map-shortcut">Ver en Mapa</button>` 
+                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${CSS.escape(cliente.direccion)}') class="btn-map-shortcut">Ver en Mapa</button>` 
                             : ''}
                       </span>
                     </td>
@@ -262,7 +262,7 @@ async function geocodificarCliente(clienteId, boton) {
         if (data.status === "ok") {
             statusElement.innerHTML = `
                 <span class="geo-status geo-success">✓ Ubicada</span>
-                <button onclick="abrirEnGoogleMaps(${data.lat}, <span class="math-inline">\{data\.lng\}, '</span>{data.direccion_formateada || direccion}')" class="btn-map-shortcut">Ver en Mapa</button>
+                <button onclick="abrirEnGoogleMaps(${data.lat}, <span class="math-inline">\{data\.lng\}, '</span>{CSS.escape(data.direccion_formateada || direccion)}') class="btn-map-shortcut">Ver en Mapa</button>
             `;
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
@@ -646,7 +646,7 @@ function registrarLlamada(btn, clienteId) {
         const errorCell = fila.querySelector('td:last-child');
         const originalText = errorCell.innerHTML;
         errorCell.innerHTML = '<span style="color:red;">Selecciona un resultado</span>';
-        setTimeout(() => { errorCell.innerHTML = originalText; }, 3000);
+        setTimeout(() => { originalText; }, 3000);
         resultadoSelect.focus();
         return;
     }
@@ -1006,34 +1006,34 @@ function limpiarClientes() {
     fetch("/limpiar-clientes", { method: "POST" })
         .then(res => {
             if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
-            return res.json();
-        })
-        .then(data => {
-            if (data.status === "ok") {
-                const msgEl = document.getElementById("mensajeExcel");
-                msgEl.className = 'success';
-                msgEl.textContent = "✅ Todos los clientes han sido eliminados.";
-
-                cargarTodosLosClientes();
-                if (usuarioActual && !esAdmin) {
-                    cargarClientes(usuarioActual.id);
-                }
-                if (esAdmin) cargarKPIsConFecha();
-            } else {
-                 throw new Error(data.mensaje || "Error desconocido al limpiar clientes");
-            }
-        })
-        .catch(error => {
-            console.error("Error al limpiar clientes:", error);
+        return res.json();
+    })
+    .then(data => {
+        if (data.status === "ok") {
             const msgEl = document.getElementById("mensajeExcel");
-            msgEl.className = 'error';
-            msgEl.textContent = `❌ Error al eliminar clientes: ${error.message}`;
-        }).finally(()=>{
-            if(botonLimpiar){
-                botonLimpiar.disabled = false;
-                botonLimpiar.textContent = '🧹 Limpiar Todos los Clientes';
+            msgEl.className = 'success';
+            msgEl.textContent = "✅ Todos los clientes han sido eliminados.";
+
+            cargarTodosLosClientes();
+            if (usuarioActual && !esAdmin) {
+                cargarClientes(usuarioActual.id);
             }
-        });
+            if (esAdmin) cargarKPIsConFecha();
+        } else {
+             throw new Error(data.mensaje || "Error desconocido al limpiar clientes");
+        }
+    })
+    .catch(error => {
+        console.error("Error al limpiar clientes:", error);
+        const msgEl = document.getElementById("mensajeExcel");
+        msgEl.className = 'error';
+        msgEl.textContent = `❌ Error al eliminar clientes: ${error.message}`;
+    }).finally(()=>{
+        if(botonLimpiar){
+            botonLimpiar.disabled = false;
+            botonLimpiar.textContent = '🧹 Limpiar Todos los Clientes';
+        }
+    });
 }
 
 function procesarArchivo(event) {
