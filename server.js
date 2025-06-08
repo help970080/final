@@ -19,7 +19,6 @@ const DB_FILE = '/opt/render/project/src/data/database.json';
 let dbCache = null;
 let lastDbUpdate = 0;
 
-// *** PUNTO CLAVE 1: Asegurarse de que Maps_API_KEY se lea correctamente del entorno ***
 const Maps_API_KEY = process.env.Maps_API_KEY; 
 
 function readDB() {
@@ -38,12 +37,11 @@ function readDB() {
                 clientes: [],
                 llamadas: []
             };
-            // Añadir ubicacion_actual a los usuarios existentes en caso de inicialización, si ya existe se mantendría
             initialData.usuarios = initialData.usuarios.map(u => ({
                 ...u,
-                lat: null, // Nueva propiedad
-                lng: null, // Nueva propiedad
-                ultima_actualizacion_ubicacion: null // Nueva propiedad
+                lat: null, 
+                lng: null,
+                ultima_actualizacion_ubicacion: null
             }));
 
             const dir = path.dirname(DB_FILE);
@@ -55,7 +53,6 @@ function readDB() {
         } else {
             try {
                 dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-                // Asegurarse de que todos los usuarios tienen las nuevas propiedades al cargar la DB
                 dbCache.usuarios = dbCache.usuarios.map(u => ({
                     ...u,
                     lat: u.lat !== undefined ? u.lat : null,
@@ -131,7 +128,6 @@ app.post('/cargar-clientes', async (req, res) => {
         for (const cliente of nuevosClientes) {
             let lat = null;
             let lng = null;
-            // Solo intentar geocodificar si hay una dirección y la API Key está disponible
             if (cliente.direccion && Maps_API_KEY) { 
                 try {
                     let direccionCompleta = `${cliente.direccion}, CDMX, México`.replace(/,\s+/g, ', ').replace(/\s+/g, '+');
@@ -176,7 +172,6 @@ app.post('/actualizar-coordenadas', async (req, res) => {
                 mensaje: "La dirección proporcionada es demasiado corta o inválida. Debe tener al menos 5 caracteres." 
             });
         }
-        // Añadir lógica para que la API Key esté disponible para el geocoding
         if (!Maps_API_KEY) {
             return res.status(500).json({ status: "error", mensaje: "API Key de Google Maps no configurada en el servidor." });
         }
@@ -222,7 +217,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
                 mensajeError = "Se ha excedido el límite de consultas a la API de Google Maps";
                 sugerencia = "Intenta nuevamente más tarde o revisa tu cuota de la API Key.";
                 break;
-            case "REQUEST_DENIED": // Este es el error que te aparece
+            case "REQUEST_DENIED":
                 mensajeError = "Acceso denegado a la API de Google Maps";
                 sugerencia = "Verifica la configuración de tu API Key y asegúrate de que los servicios de Geocoding estén habilitados.";
                 break;
@@ -299,7 +294,7 @@ app.post('/usuarios', (req, res) => {
         id: nuevoId, 
         nombre: nombre.trim(), 
         password: password.trim(),
-        lat: null, // Inicializar nuevas propiedades
+        lat: null, 
         lng: null,
         ultima_actualizacion_ubicacion: null
     };
@@ -410,9 +405,91 @@ app.get('/ubicaciones-gestores', (req, res) => {
     res.json(gestoresConUbicacion);
 });
 
+// Nuevo endpoint para obtener estadísticas (KPIs)
+app.get('/kpis', (req, res) => {
+    const db = readDB();
+    const clientes = db.clientes || [];
+    const llamadas = db.llamadas || [];
+
+    const clientesTotales = clientes.length;
+    const clientesAsignados = clientes.filter(c => c.asignado_a !== null).length;
+    const clientesPendientesAsignar = clientes.filter(c => c.asignado_a === null).length;
+
+    const llamadasTotales = llamadas.length;
+    const montoTotalCobrado = llamadas.reduce((sum, l) => sum + (parseFloat(l.monto_cobrado) || 0), 0);
+    
+    const llamadasExito = llamadas.filter(l => l.resultado === 'Éxito').length;
+    const efectividadLlamadas = llamadasTotales > 0 ? (llamadasExito / llamadasTotales * 100).toFixed(2) : 0;
+
+    const hoy = new Date().toISOString().split("T")[0];
+    const clientesProcesadosHoy = llamadas.filter(l => l.fecha === hoy).length;
+
+    // Calcular KPIs de Riesgo
+    let riesgoClientes = { verde: 0, amarillo: 0, rojo: 0, montoRiesgoAlto: 0 };
+    const clientesDetalleRiesgo = []; // Para un posible detalle futuro si se requiere
+
+    clientes.forEach(cliente => {
+        let puntajeRiesgo = 0;
+        const llamadasCliente = llamadas.filter(l => l.cliente_id === cliente.id);
+
+        llamadasCliente.forEach(llamada => {
+            switch (llamada.resultado) {
+                case 'Rechazado':
+                    puntajeRiesgo += 30;
+                    break;
+                case 'No contestó':
+                    puntajeRiesgo += 10;
+                    break;
+                case 'En proceso':
+                    puntajeRiesgo += 5;
+                    break;
+                case 'Éxito':
+                    puntajeRiesgo = Math.max(0, puntajeRiesgo - 10); // No bajar de 0
+                    break;
+            }
+        });
+
+        // Ajuste por saldo exigible alto si ya hay riesgo
+        if (cliente.saldo_exigible > 500 && puntajeRiesgo > 10) {
+            puntajeRiesgo += 5;
+        }
+
+        // Clasificación por semáforo
+        let clasificacionRiesgo = 'verde';
+        if (puntajeRiesgo >= 40) {
+            clasificacionRiesgo = 'rojo';
+            riesgoClientes.montoRiesgoAlto += (parseFloat(cliente.saldo_exigible) || 0);
+        } else if (puntajeRiesgo >= 15) {
+            clasificacionRiesgo = 'amarillo';
+        } else {
+            clasificacionRiesgo = 'verde';
+        }
+
+        riesgoClientes[clasificacionRiesgo]++;
+        clientesDetalleRiesgo.push({
+            clienteId: cliente.id,
+            nombre: cliente.nombre,
+            puntajeRiesgo: puntajeRiesgo,
+            clasificacion: clasificacionRiesgo
+        });
+    });
+
+
+    res.json({
+        clientesTotales,
+        clientesAsignados,
+        clientesPendientesAsignar,
+        llamadasTotales,
+        montoTotalCobrado: montoTotalCobrado.toFixed(2),
+        efectividadLlamadas,
+        clientesProcesadosHoy,
+        riesgoClientes // Añadimos los KPIs de riesgo
+    });
+});
+
+
 app.listen(PORT, () => {
     console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
-    // Añade esto para verificar la clave al inicio del servidor
     console.log(`Google Maps API Key (server): ${Maps_API_KEY ? 'Cargada' : 'ERROR: No cargada'}`);
     const dataDir = path.dirname(DB_FILE);
     if (!fs.existsSync(dataDir)) {

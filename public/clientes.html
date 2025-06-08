@@ -5,11 +5,7 @@
   <title>Clientes Asignados</title>
   <link rel="stylesheet" href="style.css" />
   <script>
-    // Esta función es el callback para la API de Google Maps
-    // Se llama cuando la API está lista para ser usada.
     function inicializarMapa() {
-      // Ahora la inicialización real del mapa se hace en una función de script.js
-      // que asegura que la API Key esté disponible si es necesaria.
       if (typeof window.googleMapsApiLoadedCallback === 'function') {
         window.googleMapsApiLoadedCallback();
       }
@@ -73,6 +69,65 @@
 <div id="seccionAdmin" class="hidden seccion-card">
   <h2>Panel de Administración</h2>
   
+  <div style="background: #e6f7ff; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #cceeff;">
+    <h3>📊 Estadísticas Generales (KPIs)</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+      <div class="kpi-card">
+        <h4>Clientes Totales</h4>
+        <p id="kpiClientesTotales" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card">
+        <h4>Clientes Asignados</h4>
+        <p id="kpiClientesAsignados" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card">
+        <h4>Pendientes de Asignar</h4>
+        <p id="kpiClientesPendientes" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card">
+        <h4>Llamadas Registradas</h4>
+        <p id="kpiLlamadasTotales" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card">
+        <h4>Monto Total Cobrado</h4>
+        <p id="kpiMontoCobrado" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card">
+        <h4>Efectividad Llamadas (%)</h4>
+        <p id="kpiEfectividadLlamadas" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card">
+        <h4>Clientes Procesados Hoy</h4>
+        <p id="kpiClientesProcesadosHoy" class="kpi-value">...</p>
+      </div>
+    </div>
+    <button onclick="cargarKPIs()" style="margin-top: 15px; background-color: #007bff; color: white;">Actualizar KPIs</button>
+  </div>
+
+  <div style="background: #fff3e0; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #ffe0b2;">
+    <h3>🚦 Análisis de Riesgo de No Pago</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+      <div class="kpi-card kpi-riesgo-verde">
+        <h4>Riesgo Bajo (Verde)</h4>
+        <p id="kpiRiesgoVerde" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card kpi-riesgo-amarillo">
+        <h4>Riesgo Moderado (Amarillo)</h4>
+        <p id="kpiRiesgoAmarillo" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card kpi-riesgo-rojo">
+        <h4>Riesgo Alto (Rojo)</h4>
+        <p id="kpiRiesgoRojo" class="kpi-value">...</p>
+      </div>
+      <div class="kpi-card kpi-riesgo-monto-rojo">
+        <h4>Monto en Riesgo Alto</h4>
+        <p id="kpiMontoRiesgoAlto" class="kpi-value">...</p>
+      </div>
+    </div>
+    <button onclick="cargarKPIs()" style="margin-top: 15px; background-color: #ffc107; color: white;">Actualizar Riesgo</button>
+  </div>
+
+
   <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
     <h3>📤 Subir Clientes desde Excel</h3>
     <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="procesarArchivo(event)" />

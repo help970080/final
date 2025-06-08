@@ -6,14 +6,9 @@ let usuariosParaAsignacionMasiva = [];
 let gestoresMarkers = [];
 
 // *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
-// Este valor se usará en el frontend para cargar el mapa.
-// Si estás usando Render, es buena práctica que este valor venga de un proceso de build o de un script del lado del servidor
-// que lo inyecte, para que no esté hardcodeado en el JS. Por ahora, pon tu clave aquí.
-// Ejemplo: window.Maps_API_KEY = 'TU_API_KEY_AQUI';
 window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
 
 // Inyectar la API Key en la URL del script de Google Maps si no está presente.
-// Esto asegura que la API Key se use para cargar la librería JS del mapa.
 (function() {
     const googleMapsScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
     if (googleMapsScript && !googleMapsScript.src.includes('key=')) {
@@ -61,16 +56,11 @@ function login() {
     });
 }
 
-// Función que se llama cuando la API de Google Maps ha terminado de cargar.
-// El callback `inicializarMapa` en clientes.html la llamará.
 window.googleMapsApiLoadedCallback = function() {
     console.log("Google Maps API cargada y lista.");
-    // Inicia el mapa solo si el usuario está en clientes.html
-    if (window.location.pathname.includes("clientes.html")) {
-        // La inicialización real del mapa (con la ubicación y marcadores)
-        // se hará a través del botón "Mostrar Ruta / Ubicaciones" o al cargar la página si es admin.
-        // Pero la instancia básica del mapa ya puede crearse aquí si se desea un mapa vacío al inicio.
-        // Para este caso, mantenemos la lógica de inicializarMapaManual() para controlar cuándo se carga el contenido.
+    if (window.location.pathname.includes("clientes.html") && esAdmin) {
+        inicializarMapaManual();
+        setInterval(inicializarMapaManual, 30 * 60 * 1000);
     }
 };
 
@@ -94,18 +84,15 @@ window.addEventListener("load", () => {
         if (esAdmin) {
             document.getElementById("seccionAdmin").classList.remove("hidden");
             document.getElementById("seccionAsignacion").classList.remove("hidden");
-            cargarTodosLosClientes(); // Carga clientes no asignados para el admin
+            cargarTodosLosClientes(); 
             cargarUsuarios();
-            // Para el admin, inicializa el mapa con gestores cada 30 min
-            if(window.google) inicializarMapaManual(); // Inicializa el mapa al cargar si la API ya está lista
-            setInterval(inicializarMapaManual, 30 * 60 * 1000); // Refresca mapa admin cada 30 minutos
+            cargarKPIs(); // Carga KPIs generales y de riesgo
         } else {
             document.getElementById("seccionAdmin").classList.add("hidden");
             document.getElementById("seccionAsignacion").classList.add("hidden");
-            cargarClientes(usuarioActual.id); // Carga clientes asignados al gestor
-            // Si es gestor, enviar su ubicación cada 30 minutos
-            solicitarYEnviarUbicacion(); // Enviar al cargar la página
-            setInterval(solicitarYEnviarUbicacion, 30 * 60 * 1000); // Cada 30 minutos
+            cargarClientes(usuarioActual.id);
+            solicitarYEnviarUbicacion();
+            setInterval(solicitarYEnviarUbicacion, 30 * 60 * 1000);
         }
     }
 });
@@ -298,7 +285,7 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
                         });
                         instructionsHTML += '</ol>';
 
-                        const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userPos.lat},${userPos.lng}&destination=${clientePos.lat},${clientePos.lng}&travelmode=driving`;
+                        const googleMapsUrl = `http://maps.google.com/maps?saddr=${userPos.lat},${userPos.lng}&daddr=${clientePos.lat},${clientePos.lng}&dirflg=d`;
                         const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
 
                         document.getElementById('info-ruta').innerHTML = `
@@ -344,7 +331,6 @@ function cargarTodosLosClientes() {
             return res.json();
         })
         .then(allClients => {
-            // Filtrar para mostrar solo clientes no asignados en la tabla de admin
             const clientesNoAsignados = allClients.filter(c => c.asignado_a === null);
 
             const tbody = document.querySelector("#tablaAsignarClientes tbody");
@@ -371,7 +357,7 @@ function cargarTodosLosClientes() {
                         });
                     }
 
-                    clientesNoAsignados.forEach(cliente => { // Usar clientesNoAsignados
+                    clientesNoAsignados.forEach(cliente => {
                         const tr = document.createElement("tr");
                         tr.innerHTML = `
                             <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td>
@@ -402,8 +388,6 @@ function cargarTodosLosClientes() {
         });
 }
 
-// Renombrar la función inicializarMapa a inicializarMapaManual
-// para que el botón la llame y el callback de Google Maps API llame a `window.googleMapsApiLoadedCallback`
 function inicializarMapaManual() {
     if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
         console.error("Google Maps API no se cargó correctamente. No se puede inicializar el mapa.");
@@ -432,18 +416,15 @@ function inicializarMapaManual() {
 
     document.getElementById('info-ruta').innerHTML = '<p class="info">Obteniendo tu ubicación...</p>';
 
-    // Obtener la ubicación del usuario actual (admin o gestor)
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             async (pos) => {
                 const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
 
-                // Limpiar rutas y marcadores anteriores del renderer
                 directionsRendererInstance.setDirections({routes: []});
-                gestoresMarkers.forEach(marker => marker.setMap(null)); // Limpiar marcadores de gestores
-                gestoresMarkers = []; // Resetear array
+                gestoresMarkers.forEach(marker => marker.setMap(null));
+                gestoresMarkers = [];
 
-                // Marcador para la ubicación del ADMIN/Usuario (azul)
                 new google.maps.Marker({
                     position: userPos,
                     map: mapInstance,
@@ -457,20 +438,7 @@ function inicializarMapaManual() {
 
                 try {
                     if (esAdmin) {
-                        await cargarYMostrarGestoresEnMapa(); // Llama a esta función para mostrar gestores
-                        // Opcional: Si quieres mostrar todos los clientes para el admin
-                        // const responseClientes = await fetch(`/clientes`);
-                        // if (!responseClientes.ok) throw new Error(`Error al obtener clientes: ${responseClientes.status}`);
-                        // const clientes = await responseClientes.json();
-                        // const clientesConCoords = clientes.filter(c => c.lat && c.lng);
-                        // clientesConCoords.forEach(cliente => {
-                        //     new google.maps.Marker({
-                        //         position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
-                        //         map: mapInstance,
-                        //         title: `${cliente.nombre}\n${cliente.direccion || ''}`,
-                        //         icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
-                        //     });
-                        // });
+                        await cargarYMostrarGestoresEnMapa();
                         document.getElementById('info-ruta').innerHTML = '<p class="info">Mapa cargado. Actualizando ubicaciones de gestores cada 30 min.</p>';
 
                     } else { // Si es gestor
@@ -619,6 +587,7 @@ function registrarLlamada(btn, clienteId) {
                 if (document.querySelectorAll("#tablaClientes tbody tr").length === 0) {
                     document.querySelector("#tablaClientes tbody").innerHTML = `<tr><td colspan="10">¡Todos los clientes asignados han sido procesados!</td></tr>`;
                 }
+                if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin al registrar llamada
             }, 500);
         } else {
             const errorCell = fila.querySelector('td:last-child');
@@ -694,6 +663,7 @@ function guardarAsignaciones() {
         }
         cargarTodosLosClientes(); // Recargar la tabla para mostrar solo los no asignados
         if (!esAdmin && usuarioActual) cargarClientes(usuarioActual.id);
+        if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
     })
     .catch(error => {
         console.error("Error al guardar asignaciones:", error);
@@ -778,6 +748,7 @@ async function asignarClientesMasivamente() {
         toggleAllClients(document.getElementById('selectAllClients'));
         selectedUserElement.value = '';
         cargarTodosLosClientes(); // Recargar la tabla para mostrar solo los no asignados
+        if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
     } catch (error) {
         console.error("Error al asignar clientes masivamente:", error);
         massAssignMessage.className = 'error';
@@ -859,6 +830,7 @@ function agregarUsuario() {
             passwordInput.value = "";
             cargarUsuarios();
             cargarTodosLosClientes();
+            if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
         } else {
             throw new Error(data.mensaje || "Error desconocido al crear usuario");
         }
@@ -913,6 +885,7 @@ function eliminarUsuario(id) {
              msgEl.textContent = "✅ Usuario eliminado correctamente.";
             cargarUsuarios();
             cargarTodosLosClientes();
+            if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
         } else {
             throw new Error(data.mensaje || "Error desconocido al eliminar usuario");
         }
@@ -949,6 +922,7 @@ function limpiarClientes() {
                 if (usuarioActual && !esAdmin) {
                     cargarClientes(usuarioActual.id);
                 }
+                if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
             } else {
                  throw new Error(data.mensaje || "Error desconocido al limpiar clientes");
             }
@@ -1079,6 +1053,7 @@ function procesarArchivo(event) {
                     mensajeExcel.className = "success";
                     event.target.value = "";
                     cargarTodosLosClientes();
+                    if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
                 } else {
                     throw new Error(data.mensaje || "Error desconocido del servidor");
                 }
@@ -1242,7 +1217,6 @@ function filtrarClientes() {
     });
 }
 
-// Función para obtener y enviar la ubicación del gestor
 function solicitarYEnviarUbicacion() {
     if (!usuarioActual || esAdmin) {
         return;
@@ -1274,12 +1248,11 @@ function solicitarYEnviarUbicacion() {
             },
             (error) => {
                 console.warn("No se pudo obtener la ubicación del gestor:", error.message);
-                // Si el usuario niega el permiso, no preguntará de nuevo a menos que lo resetee manualmente.
             },
             {
                 enableHighAccuracy: false,
                 timeout: 10000,
-                maximumAge: 300000 // 5 minutos
+                maximumAge: 300000
             }
         );
     } else {
@@ -1287,11 +1260,9 @@ function solicitarYEnviarUbicacion() {
     }
 }
 
-// Función para cargar y mostrar gestores en el mapa (solo para Admin)
 async function cargarYMostrarGestoresEnMapa() {
     if (!esAdmin || !mapInstance) return;
 
-    // Limpiar marcadores de gestores anteriores
     gestoresMarkers.forEach(marker => marker.setMap(null));
     gestoresMarkers = [];
 
@@ -1318,6 +1289,48 @@ async function cargarYMostrarGestoresEnMapa() {
     }
 }
 
+// Nueva función para cargar y mostrar los KPIs
+async function cargarKPIs() {
+    if (!esAdmin) return;
+
+    try {
+        const response = await fetch('/kpis');
+        if (!response.ok) throw new Error('Error al obtener los KPIs');
+        const kpis = await response.json();
+
+        // KPIs Generales
+        document.getElementById('kpiClientesTotales').textContent = kpis.clientesTotales;
+        document.getElementById('kpiClientesAsignados').textContent = kpis.clientesAsignados;
+        document.getElementById('kpiClientesPendientes').textContent = kpis.clientesPendientesAsignar;
+        document.getElementById('kpiLlamadasTotales').textContent = kpis.llamadasTotales;
+        document.getElementById('kpiMontoCobrado').textContent = `$${kpis.montoTotalCobrado}`;
+        document.getElementById('kpiEfectividadLlamadas').textContent = `${kpis.efectividadLlamadas}%`;
+        document.getElementById('kpiClientesProcesadosHoy').textContent = kpis.clientesProcesadosHoy;
+
+        // KPIs de Riesgo
+        document.getElementById('kpiRiesgoVerde').textContent = kpis.riesgoClientes.verde;
+        document.getElementById('kpiRiesgoAmarillo').textContent = kpis.riesgoClientes.amarillo;
+        document.getElementById('kpiRiesgoRojo').textContent = kpis.riesgoClientes.rojo;
+        document.getElementById('kpiMontoRiesgoAlto').textContent = `$${kpis.riesgoClientes.montoRiesgoAlto.toFixed(2)}`; // Asegurar 2 decimales
+
+        console.log("KPIs cargados exitosamente.");
+
+    } catch (error) {
+        console.error("Error al cargar los KPIs:", error);
+        document.getElementById('kpiClientesTotales').textContent = 'Error';
+        document.getElementById('kpiClientesAsignados').textContent = 'Error';
+        document.getElementById('kpiClientesPendientes').textContent = 'Error';
+        document.getElementById('kpiLlamadasTotales').textContent = 'Error';
+        document.getElementById('kpiMontoCobrado').textContent = 'Error';
+        document.getElementById('kpiEfectividadLlamadas').textContent = 'Error';
+        document.getElementById('kpiClientesProcesadosHoy').textContent = 'Error';
+        document.getElementById('kpiRiesgoVerde').textContent = 'Error';
+        document.getElementById('kpiRiesgoAmarillo').textContent = 'Error';
+        document.getElementById('kpiRiesgoRojo').textContent = 'Error';
+        document.getElementById('kpiMontoRiesgoAlto').textContent = 'Error';
+    }
+}
+
 
 window.login = login;
 window.cerrarSesion = cerrarSesion;
@@ -1329,7 +1342,7 @@ window.agregarUsuario = agregarUsuario;
 window.limpiarClientes = limpiarClientes;
 window.eliminarUsuario = eliminarUsuario;
 window.registrarLlamada = registrarLlamada;
-window.inicializarMapaManual = inicializarMapaManual; // Renombrada y exportada
+window.inicializarMapaManual = inicializarMapaManual;
 window.geocodificarCliente = geocodificarCliente;
 window.mostrarClienteEnMapa = mostrarClienteEnMapa;
 window.filtrarClientes = filtrarClientes;
@@ -1338,3 +1351,4 @@ window.toggleAllClients = toggleAllClients;
 window.asignarClientesMasivamente = asignarClientesMasivamente;
 window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
 window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;
+window.cargarKPIs = cargarKPIs; // Exportar la nueva función
