@@ -5,14 +5,13 @@
   <title>Clientes Asignados</title>
   <link rel="stylesheet" href="style.css" />
   <script>
+    // This function will be called by Google Maps API once it's loaded
     function inicializarMapa() {
       if (typeof window.googleMapsApiLoadedCallback === 'function') {
         window.googleMapsApiLoadedCallback();
       }
     }
   </script>
-  <script async defer src="https://maps.googleapis.com/maps/api/js?libraries=places,geometry&callback=inicializarMapa"></script>
-  
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     /* El CSS en línea se ha movido a style.css para mayor orden */

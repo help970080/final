@@ -8,17 +8,26 @@ let gestoresMarkers = [];
 // *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
 window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
 
-// Inyectar la API Key en la URL del script de Google Maps si no está presente.
-(function() {
-    const googleMapsScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
-    if (googleMapsScript && !googleMapsScript.src.includes('key=')) {
-        if (window.Maps_API_KEY) {
-            googleMapsScript.src = googleMapsScript.src.split('&callback')[0] + '&key=' + window.Maps_API_KEY + '&callback=' + googleMapsScript.src.split('&callback=')[1];
-        } else {
-            console.error("Maps_API_KEY no está definida en window. No se pudo cargar Google Maps con una clave.");
-        }
+// Function to dynamically load Google Maps API
+function loadGoogleMapsScript() {
+    // Check if the script is already added to prevent duplicates
+    if (document.getElementById('google-maps-script')) {
+        return;
     }
-})();
+
+    if (!window.Maps_API_KEY) {
+        console.error("Maps_API_KEY no está definida en window. No se pudo cargar Google Maps.");
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'google-maps-script'; // Assign an ID to check for its existence later
+    script.async = true;
+    script.defer = true;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${window.Maps_API_KEY}&libraries=places,geometry&callback=inicializarMapa`;
+    document.head.appendChild(script);
+    console.log("Google Maps API script inyectado dinámicamente.");
+}
 
 
 function login() {
@@ -58,9 +67,11 @@ function login() {
 
 window.googleMapsApiLoadedCallback = function() {
     console.log("Google Maps API cargada y lista.");
+    // No longer initializing map here directly, inicializarMapaManual will handle it when needed.
+    // However, if esAdmin, we can still load initial map info.
     if (window.location.pathname.includes("clientes.html") && esAdmin) {
+        // This ensures the map is ready for admin, but the button click will still refresh/recenter.
         inicializarMapaManual();
-        // El intervalo para actualizar el mapa se gestiona dentro de inicializarMapaManual()
     }
 };
 
@@ -99,6 +110,8 @@ window.addEventListener("load", () => {
         const dd = String(firstDayOfMonth.getDate()).padStart(2, '0');
         document.getElementById('fechaInicioBonos').value = `${yyyy}-${mm}-${dd}`;
 
+        // Load Google Maps script when clientes.html loads
+        loadGoogleMapsScript();
 
         if (esAdmin) {
             document.getElementById("seccionAdmin").classList.remove("hidden");
@@ -287,13 +300,13 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             });
             instructionsHTML += '</ol>';
 
-            const googleMapsUrl = `http://maps.google.com/maps?saddr=${origen.lat},${origen.lng}&daddr=${destino.lat},${destino.lng}&dirflg=d`;
+            const googleMapsUrl = `http://maps.google.com/maps?saddr=$${origen.lat},${origen.lng}&daddr=${destino.lat},${destino.lng}&dirflg=d`;
             const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
 
             document.getElementById('info-ruta').innerHTML = `
                 <h3>Ruta a ${cliente.nombre}</h3>
                 <p><strong>Desde:</strong> Tu ubicación actual</p>
-                <p><strong>Hacia:</strong> ${direccion || 'No disponible'}</p>
+                <p><strong>Hacia:</strong> ${cliente.direccion || 'No disponible'}</p>
                 <p><strong>Distancia Total:</strong> ${leg.distance.text}</p>
                 <p><strong>Duración Estimada:</strong> ${leg.duration.text}</p>
                 ${navigationLink}
@@ -303,7 +316,7 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             console.warn('Error al calcular la ruta en mostrarRuta: ' + status);
             document.getElementById('info-ruta').innerHTML = `
                 <h3>Cliente: ${cliente.nombre}</h3>
-                <p><strong>Dirección:</strong> ${direccion}</p>
+                <p><strong>Dirección:</strong> ${cliente.direccion}</p>
                 <p class="info">No se pudo calcular la ruta desde tu ubicación. Verifica los permisos de ubicación.</p>`;
         }
     });
@@ -778,7 +791,7 @@ async function asignarClientesMasivamente() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.mensaje || `Error HTTP ${res.status}`);
+            throw new Error(data.mensaje || `Error HTTP ${response.status}`);
         }
 
         massAssignMessage.className = 'success';
@@ -1432,7 +1445,7 @@ function cargarKPIsConFecha() {
 function abrirEnGoogleMaps(lat, lng, direccion) {
     // Usar la URL de Google Maps para buscar un lugar por coordenadas.
     // 'query' es preferible para buscar un punto específico.
-    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=$${lat},${lng}`;
     window.open(googleMapsUrl, '_blank');
 }
 
