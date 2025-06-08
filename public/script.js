@@ -144,6 +144,14 @@ window.addEventListener("load", () => {
     }
 });
 
+function crearBotonVerEnMapa(lat, lng, direccion) {
+    const button = document.createElement('button');
+    button.textContent = 'Ver en Mapa';
+    button.className = 'btn-map-shortcut';
+    button.onclick = () => abrirEnGoogleMaps(lat, lng, direccion);
+    return button;
+}
+
 function cargarClientes(usuarioId) {
     fetch(`/clientes/${usuarioId}`)
         .then(res => {
@@ -161,36 +169,78 @@ function cargarClientes(usuarioId) {
 
             clientes.forEach(cliente => {
                 const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td>${cliente.nombre}</td>
-                    <td>${cliente.telefono ? `<a href="tel:<span class="math-inline">\{cliente\.telefono\}" class\="telefono\-link"\></span>{cliente.telefono}</a> <button onclick="enviarWhatsapp('<span class="math-inline">\{cliente\.telefono\}', '</span>{cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
-                    <td>${cliente.direccion || "-"}
-                      <button onclick="geocodificarCliente(${cliente.id}, this)" class="btn-geo">
-                        🌍 Geolocalizar
-                      </button>
-                      <span id="geo-status-${cliente.id}" class="geo-status">
-                        ${cliente.lat && cliente.lng ? 
-                            // CORRECCIÓN FINAL EN ESTA LÍNEA (quitado el `"` extra)
-                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, <span class="math-inline">\{cliente\.lng\}, '</span>{CSS.escape(cliente.direccion)}')" class="btn-map-shortcut">Ver en Mapa</button>` 
-                            : ''}
-                      </span>
-                    </td>
-                    <td>${cliente.tarifa || "-"}</td>
-                    <td>${cliente.saldo_exigible || "-"}</td>
-                    <td>${cliente.saldo || "-"}</td>
-                    <td><input type="number" class="monto" data-id="${cliente.id}" /></td>
-                    <td>
-                        <select class="resultado" data-id="${cliente.id}">
-                            <option value="">Selecciona</option>
-                            <option value="Éxito">Éxito</option>
-                            <option value="En proceso">En proceso</option>
-                            <option value="No contestó">No contestó</option>
-                            <option value="Rechazado">Rechazado</option>
-                        </select>
-                    </td>
-                    <td><input type="text" class="observaciones" data-id="${cliente.id}" /></td>
-                    <td><button onclick="registrarLlamada(this, ${cliente.id})">Registrar</button></td>
+                const telefonoTd = document.createElement('td');
+                if (cliente.telefono) {
+                    const telLink = document.createElement('a');
+                    telLink.href = `tel:${cliente.telefono}`;
+                    telLink.className = 'telefono-link';
+                    telLink.textContent = cliente.telefono;
+                    telefonoTd.appendChild(telLink);
+
+                    const whatsappBtn = document.createElement('button');
+                    whatsappBtn.className = 'btn-whatsapp';
+                    whatsappBtn.textContent = '💬 WhatsApp';
+                    whatsappBtn.onclick = () => enviarWhatsapp(cliente.telefono, cliente.nombre);
+                    telefonoTd.appendChild(whatsappBtn);
+                } else {
+                    telefonoTd.textContent = "-";
+                }
+
+                const direccionTd = document.createElement('td');
+                direccionTd.textContent = cliente.direccion || "-";
+                
+                const geoBtn = document.createElement('button');
+                geoBtn.className = 'btn-geo';
+                geoBtn.textContent = '🌍 Geolocalizar';
+                geoBtn.onclick = (event) => geocodificarCliente(cliente.id, event.target);
+                direccionTd.appendChild(geoBtn);
+
+                const geoStatusSpan = document.createElement('span');
+                geoStatusSpan.id = `geo-status-${cliente.id}`;
+                geoStatusSpan.className = 'geo-status';
+                if (cliente.lat && cliente.lng) {
+                    geoStatusSpan.textContent = '✓ Ubicada ';
+                    geoStatusSpan.appendChild(crearBotonVerEnMapa(cliente.lat, cliente.lng, cliente.direccion));
+                }
+                direccionTd.appendChild(geoStatusSpan);
+
+
+                tr.appendChild(document.createElement('td')).textContent = cliente.nombre;
+                tr.appendChild(telefonoTd);
+                tr.appendChild(direccionTd);
+                tr.appendChild(document.createElement('td')).textContent = cliente.tarifa || "-";
+                tr.appendChild(document.createElement('td')).textContent = cliente.saldo_exigible || "-";
+                tr.appendChild(document.createElement('td')).textContent = cliente.saldo || "-";
+
+                const montoInput = document.createElement('input');
+                montoInput.type = 'number';
+                montoInput.className = 'monto';
+                montoInput.dataset.id = cliente.id;
+                tr.appendChild(document.createElement('td')).appendChild(montoInput);
+
+                const resultadoSelect = document.createElement('select');
+                resultadoSelect.className = 'resultado';
+                resultadoSelect.dataset.id = cliente.id;
+                resultadoSelect.innerHTML = `
+                    <option value="">Selecciona</option>
+                    <option value="Éxito">Éxito</option>
+                    <option value="En proceso">En proceso</option>
+                    <option value="No contestó">No contestó</option>
+                    <option value="Rechazado">Rechazado</option>
                 `;
+                tr.appendChild(document.createElement('td')).appendChild(resultadoSelect);
+
+                const observacionesInput = document.createElement('input');
+                observacionesInput.type = 'text';
+                observacionesInput.className = 'observaciones';
+                observacionesInput.dataset.id = cliente.id;
+                tr.appendChild(document.createElement('td')).appendChild(observacionesInput);
+
+                const registrarBtn = document.createElement('button');
+                registrarBtn.textContent = 'Registrar';
+                registrarBtn.onclick = () => registrarLlamada(registrarBtn, cliente.id);
+                tr.appendChild(document.createElement('td')).appendChild(registrarBtn);
+
                 tbody.appendChild(tr);
             });
         })
@@ -228,9 +278,12 @@ function enviarWhatsapp(telefono, nombreCliente) {
 async function geocodificarCliente(clienteId, boton) {
     const fila = boton.closest('tr');
     const celdas = fila.querySelectorAll('td');
-    let direccion = celdas[2].textContent.split('🌍')[0].trim();
+    let direccion = celdas[2].textContent.split('🌍')[0].trim(); // Intenta obtener la dirección actual de la celda
     const statusElement = document.getElementById(`geo-status-${clienteId}`);
     const botonGeo = fila.querySelector('.btn-geo');
+
+    // Limpiar contenido anterior del statusElement antes de actualizar
+    statusElement.innerHTML = ''; 
 
     if (!direccion || direccion === "-") {
         statusElement.textContent = "Sin dirección";
@@ -255,11 +308,10 @@ async function geocodificarCliente(clienteId, boton) {
         const data = await response.json();
 
         if (data.status === "ok") {
-            // CORRECCIÓN FINAL EN ESTA LÍNEA
-            statusElement.innerHTML = `
-                <span class="geo-status geo-success">✓ Ubicada</span>
-                <button onclick="abrirEnGoogleMaps(${data.lat}, ${data.lng}, '${CSS.escape(data.direccion_formateada || direccion)}')" class="btn-map-shortcut">Ver en Mapa</button>
-            `;
+            statusElement.className = "geo-status geo-success";
+            statusElement.textContent = '✓ Ubicada '; // Espacio al final para el botón
+            statusElement.appendChild(crearBotonVerEnMapa(data.lat, data.lng, data.direccion_formateada || direccion));
+            
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
             
@@ -283,7 +335,8 @@ async function geocodificarCliente(clienteId, boton) {
         console.error("Error en fetch geocodificarCliente:", error);
     } finally {
         botonGeo.disabled = false;
-         if (!statusElement.textContent.includes('✓ Ubicada')) {
+         // Si falló, restablecer el color del botón
+         if (!statusElement.textContent.includes('✓ Ubicada')) { 
              botonGeo.style.backgroundColor = '';
          }
     }
@@ -443,7 +496,7 @@ function cargarTodosLosClientes() {
                         tr.innerHTML = `
                             <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td>
                             <td>${cliente.nombre}</td>
-                            <td>${cliente.telefono ? `<a href="tel:<span class="math-inline">\{cliente\.telefono\}" class\="telefono\-link"\></span>{cliente.telefono}</a>` : "-"}</td>
+                            <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a>` : "-"}</td>
                             <td>${cliente.direccion || "-"}</td>
                             <td>${cliente.tarifa || "-"}</td>
                             <td>${cliente.saldo_exigible || "-"}</td>
@@ -451,7 +504,7 @@ function cargarTodosLosClientes() {
                             <td>
                                 <select class="usuarioSelect" data-id="${cliente.id}">
                                     <option value="">-- Sin asignar --</option>
-                                    ${usuarios.map(u => `<option value="${u.id}" <span class="math-inline">\{cliente\.asignado\_a \=\=\= u\.id ? "selected" \: ""\}\></span>{u.nombre}</option>`).join("")}
+                                    ${usuarios.map(u => `<option value="${u.id}" ${cliente.asignado_a === u.id ? "selected" : ""}>${u.nombre}</option>`).join("")}
                                 </select>
                             </td>
                         `;
