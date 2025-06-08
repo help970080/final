@@ -606,7 +606,7 @@ function registrarLlamada(btn, clienteId) {
                 if (document.querySelectorAll("#tablaClientes tbody tr").length === 0) {
                     document.querySelector("#tablaClientes tbody").innerHTML = `<tr><td colspan="10">¡Todos los clientes asignados han sido procesados!</td></tr>`;
                 }
-                if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin al registrar llamada
+                if (esAdmin) cargarKPIsConFecha();
             }, 500);
         } else {
             const errorCell = fila.querySelector('td:last-child');
@@ -682,7 +682,7 @@ function guardarAsignaciones() {
         }
         cargarTodosLosClientes();
         if (!esAdmin && usuarioActual) cargarClientes(usuarioActual.id);
-        if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
+        if (esAdmin) cargarKPIsConFecha();
     })
     .catch(error => {
         console.error("Error al guardar asignaciones:", error);
@@ -767,7 +767,7 @@ async function asignarClientesMasivamente() {
         toggleAllClients(document.getElementById('selectAllClients'));
         selectedUserElement.value = '';
         cargarTodosLosClientes();
-        if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
+        if (esAdmin) cargarKPIsConFecha();
     } catch (error) {
         console.error("Error al asignar clientes masivamente:", error);
         massAssignMessage.className = 'error';
@@ -849,7 +849,7 @@ function agregarUsuario() {
             passwordInput.value = "";
             cargarUsuarios();
             cargarTodosLosClientes();
-            if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
+            if (esAdmin) cargarKPIsConFecha();
         } else {
             throw new Error(data.mensaje || "Error desconocido al crear usuario");
         }
@@ -904,7 +904,7 @@ function eliminarUsuario(id) {
              msgEl.textContent = "✅ Usuario eliminado correctamente.";
             cargarUsuarios();
             cargarTodosLosClientes();
-            if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
+            if (esAdmin) cargarKPIsConFecha();
         } else {
             throw new Error(data.mensaje || "Error desconocido al eliminar usuario");
         }
@@ -941,7 +941,7 @@ function limpiarClientes() {
                 if (usuarioActual && !esAdmin) {
                     cargarClientes(usuarioActual.id);
                 }
-                if (esAdmin) cargarKPIsConFecha(); // Recargar KPIs si es admin
+                if (esAdmin) cargarKPIsConFecha();
             } else {
                  throw new Error(data.mensaje || "Error desconocido al limpiar clientes");
             }
@@ -1421,12 +1421,12 @@ window.eliminarUsuario = eliminarUsuario;
 window.registrarLlamada = registrarLlamada;
 window.inicializarMapaManual = inicializarMapaManual;
 window.geocodificarCliente = geocodificarCliente;
-window.mostrarClienteEnMapa = mostrarClienteEnMapa;
+window.mostrarClienteEnMapa = mostrarClienteEnMapa; // Hacerla global para el caso de uso del mapa.
 window.filtrarClientes = filtrarClientes;
 window.enviarWhatsapp = enviarWhatsapp;
 window.toggleAllClients = toggleAllClients;
 window.asignarClientesMasivamente = asignarClientesMasivamente;
 window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
 window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;
-window.cargarKPIs = cargarKPIs; // Exportar la función base
-window.cargarKPIsConFecha = cargarKPIsConFecha; // Exportar la nueva función para el botón
+window.cargarKPIs = cargarKPIs;
+window.cargarKPIsConFecha = cargarKPIsConFecha;
