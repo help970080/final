@@ -229,7 +229,8 @@ async function geocodificarCliente(clienteId, boton) {
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
             
-            if (document.getElementById('mapa') && window.mostrarClienteEnMapa && mapInstance) {
+            // Aquí se pasa 'mapInstance' al llamar a mostrarClienteEnMapa
+            if (document.getElementById('mapa') && mapInstance) { // Simplificado: ya no se necesita window.mostrarClienteEnMapa
                 const nombreCliente = fila.querySelector('td:first-child').textContent;
                 mostrarClienteEnMapa(mapInstance, data.lat, data.lng, data.direccion_formateada || direccion, nombreCliente);
             }
@@ -254,6 +255,57 @@ async function geocodificarCliente(clienteId, boton) {
          }
     }
 }
+
+// Asegurarse de que mostrarRuta esté definida antes de mostrarClienteEnMapa
+function mostrarRuta(map, directionsRenderer, origen, cliente) {
+    if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
+        console.error("Google Maps API no está disponible.");
+        document.getElementById('info-ruta').innerHTML = '<p class="error">Google Maps API no disponible.</p>';
+        return;
+    }
+
+    const destino = { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) };
+    
+    const directionsService = new google.maps.DirectionsService();
+
+    directionsService.route({
+        origin: origen,
+        destination: destino,
+        travelMode: google.maps.TravelMode.DRIVING
+    }, (response, status) => {
+        if (status === google.maps.DirectionsStatus.OK) {
+            directionsRenderer.setDirections(response);
+            
+            const route = response.routes[0];
+            const leg = route.legs[0];
+            let instructionsHTML = '<h4>Indicaciones detalladas:</h4><ol style="padding-left: 20px; max-height: 200px; overflow-y: auto;">';
+            leg.steps.forEach(step => {
+                instructionsHTML += `<li style="margin-bottom: 5px;">${step.instructions} <span style="font-size:0.9em; color:#555;">(${step.distance.text}, ${step.duration.text})</span></li>`;
+            });
+            instructionsHTML += '</ol>';
+
+            const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origen.lat},${origen.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`;
+            const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
+
+            document.getElementById('info-ruta').innerHTML = `
+                <h3>Ruta a ${cliente.nombre}</h3>
+                <p><strong>Desde:</strong> Tu ubicación actual</p>
+                <p><strong>Hacia:</strong> ${direccion || 'No disponible'}</p>
+                <p><strong>Distancia Total:</strong> ${leg.distance.text}</p>
+                <p><strong>Duración Estimada:</strong> ${leg.duration.text}</p>
+                ${navigationLink}
+                ${instructionsHTML}
+            `;
+        } else {
+            console.warn('Error al calcular la ruta en mostrarRuta: ' + status);
+            document.getElementById('info-ruta').innerHTML = `
+                <h3>Cliente: ${cliente.nombre}</h3>
+                <p><strong>Dirección:</strong> ${direccion}</p>
+                <p class="info">No se pudo calcular la ruta desde tu ubicación. Verifica los permisos de ubicación.</p>`;
+        }
+    });
+}
+
 
 function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
     if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
@@ -288,42 +340,8 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
                 const directionsService = new google.maps.DirectionsService();
                 const directionsRenderer = new google.maps.DirectionsRenderer({ map: map, suppressMarkers: true });
 
-                directionsService.route({
-                    origin: userPos,
-                    destination: clientePos,
-                    travelMode: google.maps.TravelMode.DRIVING
-                }, (response, status) => {
-                    if (status === google.maps.DirectionsStatus.OK) {
-                        directionsRenderer.setDirections(response);
-                        
-                        const route = response.routes[0];
-                        const leg = route.legs[0];
-                        let instructionsHTML = '<h4>Indicaciones detalladas:</h4><ol style="padding-left: 20px; max-height: 200px; overflow-y: auto;">';
-                        leg.steps.forEach(step => {
-                            instructionsHTML += `<li style="margin-bottom: 5px;">${step.instructions} <span style="font-size:0.9em; color:#555;">(${step.distance.text}, ${step.duration.text})</span></li>`;
-                        });
-                        instructionsHTML += '</ol>';
+                mostrarRuta(map, directionsRenderer, userPos, { lat: lat, lng: lng, nombre: nombreCliente, direccion: direccion }); // Llamar a mostrarRuta con los argumentos correctos
 
-                        const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userPos.lat},${userPos.lng}&destination=${clientePos.lat},${clientePos.lng}&travelmode=driving`;
-                        const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
-
-                        document.getElementById('info-ruta').innerHTML = `
-                            <h3>Ruta a ${nombreCliente}</h3>
-                            <p><strong>Desde:</strong> Tu ubicación actual</p>
-                            <p><strong>Hacia:</strong> ${direccion || 'No disponible'}</p>
-                            <p><strong>Distancia Total:</strong> ${leg.distance.text}</p>
-                            <p><strong>Duración Estimada:</strong> ${leg.duration.text}</p>
-                            ${navigationLink}
-                            ${instructionsHTML}
-                        `;
-                    } else {
-                        console.warn('Error al calcular la ruta en mostrarClienteEnMapa: ' + status);
-                        document.getElementById('info-ruta').innerHTML = `
-                            <h3>Cliente: ${nombreCliente}</h3>
-                            <p><strong>Dirección:</strong> ${direccion}</p>
-                            <p class="info">No se pudo calcular la ruta desde tu ubicación. Verifica los permisos de ubicación.</p>`;
-                    }
-                });
             },
             (error) => {
                 console.warn("Error obteniendo ubicación del usuario:", error.message);
@@ -1402,7 +1420,6 @@ async function cargarKPIs(fechaInicio = null) {
     }
 }
 
-// Nueva función para llamar a cargarKPIs con la fecha del calendario
 function cargarKPIsConFecha() {
     const fechaInicio = document.getElementById('fechaInicioBonos').value;
     cargarKPIs(fechaInicio);
@@ -1421,7 +1438,7 @@ window.eliminarUsuario = eliminarUsuario;
 window.registrarLlamada = registrarLlamada;
 window.inicializarMapaManual = inicializarMapaManual;
 window.geocodificarCliente = geocodificarCliente;
-window.mostrarClienteEnMapa = mostrarClienteEnMapa; // Hacerla global para el caso de uso del mapa.
+window.mostrarClienteEnMapa = mostrarClienteEnMapa; // Hacerla global
 window.filtrarClientes = filtrarClientes;
 window.enviarWhatsapp = enviarWhatsapp;
 window.toggleAllClients = toggleAllClients;
