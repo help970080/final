@@ -15,48 +15,7 @@
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
-    .hidden { display: none; }
-    .success { color: green; }
-    .error { color: red; }
-    .info { color: blue; }
-    table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #f2f2f2; position: sticky; top: 0; }
-    tr:nth-child(even) { background-color: #f9f9f9; }
-    tr:hover { background-color: #f1f1f1; }
-    button { cursor: pointer; padding: 5px 10px; }
-    input, select { padding: 5px; width: 100%; box-sizing: border-box; }
-    #mapa { height: 500px; width: 100%; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-    #info-ruta { background: #f8f9fa; padding: 15px; border-radius: 8px; }
-    .telefono-link { color: #0066cc; text-decoration: none; }
-    .telefono-link:hover { text-decoration: underline; }
-    /* Nuevos estilos para geolocalización */
-    .btn-geo {
-      padding: 3px 8px;
-      margin-left: 8px;
-      background: #4285F4;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      transition: all 0.3s;
-    }
-    .btn-geo:hover { background: #3367D6; transform: scale(1.05); }
-    .btn-geo:disabled { background: #cccccc; cursor: not-allowed; }
-    .geo-status {
-      margin-left: 8px;
-      font-size: 12px;
-      display: inline-block;
-      min-width: 120px;
-    }
-    .geo-success { color: #4CAF50; }
-    .geo-error { color: #F44336; }
-    .geo-loading { color: #2196F3; }
-    @media (max-width: 768px) {
-      .btn-geo { margin-left: 4px; padding: 2px 5px; font-size: 11px; }
-      .geo-status { display: block; margin-left: 0; margin-top: 4px; }
-    }
+    /* El CSS en línea se ha movido a style.css para mayor orden */
   </style>
 </head>
 <body>
@@ -69,9 +28,9 @@
 <div id="seccionAdmin" class="hidden seccion-card">
   <h2>Panel de Administración</h2>
   
-  <div style="background: #e6f7ff; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #cceeff;">
+  <div class="kpi-section-card">
     <h3>📊 Estadísticas Generales (KPIs)</h3>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+    <div class="kpi-grid">
       <div class="kpi-card">
         <h4>Clientes Totales</h4>
         <p id="kpiClientesTotales" class="kpi-value">...</p>
@@ -101,12 +60,12 @@
         <p id="kpiClientesProcesadosHoy" class="kpi-value">...</p>
       </div>
     </div>
-    <button onclick="cargarKPIs()" style="margin-top: 15px; background-color: #007bff; color: white;">Actualizar KPIs</button>
+    <button onclick="cargarKPIs()" class="kpi-update-button">Actualizar KPIs</button>
   </div>
 
-  <div style="background: #fff3e0; padding: 20px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #ffe0b2;">
+  <div class="kpi-section-card kpi-risk-background">
     <h3>🚦 Análisis de Riesgo de No Pago</h3>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+    <div class="kpi-grid">
       <div class="kpi-card kpi-riesgo-verde">
         <h4>Riesgo Bajo (Verde)</h4>
         <p id="kpiRiesgoVerde" class="kpi-value">...</p>
@@ -124,23 +83,48 @@
         <p id="kpiMontoRiesgoAlto" class="kpi-value">...</p>
       </div>
     </div>
-    <button onclick="cargarKPIs()" style="margin-top: 15px; background-color: #ffc107; color: white;">Actualizar Riesgo</button>
+    <button onclick="cargarKPIs()" class="kpi-update-button kpi-risk-button">Actualizar Riesgo</button>
+  </div>
+
+  <div class="kpi-section-card kpi-performance-background">
+    <h3>📈 Rendimiento de Gestores y Bonos</h3>
+    <div style="max-height: 400px; overflow-y: auto;">
+      <table id="tablaRendimientoGestores">
+        <thead>
+          <tr>
+            <th>Gestor</th>
+            <th>Monto Cobrado</th>
+            <th>Efectividad (%)</th>
+            <th>Total Llamadas</th>
+            <th>Salario Base Ganado</th>
+            <th>% Bono Ganado</th>
+            <th>Próximo Nivel Objetivo</th>
+            <th>% Cuota Próximo Nivel</th>
+            <th>Monto Proyectado (15 días)</th>
+            <th>Tendencia</th>
+          </tr>
+        </thead>
+        <tbody>
+          </tbody>
+      </table>
+    </div>
+    <button onclick="cargarKPIs()" class="kpi-update-button kpi-performance-button">Actualizar Rendimiento</button>
   </div>
 
 
-  <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+  <div class="admin-section-card">
     <h3>📤 Subir Clientes desde Excel</h3>
-    <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="procesarArchivo(event)" />
+    <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" />
     <p id="mensajeExcel" class="info"></p>
-    <button onclick="limpiarClientes()" style="background-color: #ff4444; color: white;">🧹 Limpiar Todos los Clientes</button>
+    <button onclick="limpiarClientes()" class="button-danger">🧹 Limpiar Todos los Clientes</button>
   </div>
 
-  <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+  <div class="admin-section-card">
     <h3>👥 Gestionar Usuarios</h3>
-    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-      <input type="text" id="nuevoUsuarioNombre" placeholder="Nombre de usuario" style="flex: 1;" required />
-      <input type="password" id="nuevoUsuarioPassword" placeholder="Contraseña" style="flex: 1;" required />
-      <button onclick="agregarUsuario()" style="background-color: #4CAF50; color: white;">➕ Agregar Usuario</button>
+    <div class="form-row">
+      <input type="text" id="nuevoUsuarioNombre" placeholder="Nombre de usuario" required />
+      <input type="password" id="nuevoUsuarioPassword" placeholder="Contraseña" required />
+      <button onclick="agregarUsuario()" class="button-success">➕ Agregar Usuario</button>
     </div>
     <p class="admin-message"></p>
 
@@ -160,19 +144,18 @@
 <div id="seccionAsignacion" class="hidden seccion-card">
   <h2>📌 Asignación de Clientes (Clientes no asignados)</h2>
   
-  <div style="margin-bottom: 15px;">
-    <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" 
-           style="padding: 8px; width: 300px; margin-right: 10px;" />
-    <button onclick="guardarAsignaciones()" style="background-color: #2196F3; color: white;">💾 Guardar Asignaciones Individuales</button>
+  <div class="form-row">
+    <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" />
+    <button onclick="guardarAsignaciones()" class="button-primary">💾 Guardar Asignaciones Individuales</button>
   </div>
 
-  <div style="margin-bottom: 15px; margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+  <div class="mass-assign-section">
     <h3>Asignación Masiva</h3>
-    <select id="massAssignUserSelect" style="width: 200px; margin-right: 10px;">
+    <select id="massAssignUserSelect">
         <option value="">-- Seleccionar usuario --</option>
-        </select>
-    <button onclick="asignarClientesMasivamente()" style="background-color: #8E24AA; color: white;">🚀 Asignar Clientes Seleccionados</button>
-    <p id="massAssignMessage" class="info" style="margin-top: 10px;"></p>
+    </select>
+    <button onclick="asignarClientesMasivamente()" class="button-purple">🚀 Asignar Clientes Seleccionados</button>
+    <p id="massAssignMessage" class="info"></p>
   </div>
   <p class="admin-message"></p>
 
@@ -221,12 +204,11 @@
 
 <div class="seccion-card">
   <h2>Mapa de Clientes y Gestores</h2>
-  <div style="display: flex; gap: 20px;">
-    <div id="mapa" style="height: 400px; flex: 2; border: 1px solid #ccc;"></div>
-    <div id="info-ruta" style="flex: 1; padding: 10px; background: #f5f5f5;">
+  <div class="map-container">
+    <div id="mapa"></div>
+    <div id="info-ruta">
       <p>Presiona el botón para cargar el mapa.</p>
-      <button onclick="inicializarMapaManual()" 
-              style="padding: 10px; background: #4285F4; color: white; border: none; border-radius: 4px;">
+      <button onclick="inicializarMapaManual()" class="button-map">
         🗺️ Recargar Mapa / Ubicaciones
       </button>
     </div>
@@ -235,9 +217,9 @@
 
 <div class="seccion-card">
   <h2>Reporte General</h2>
-  <div style="margin-bottom: 15px;">
-    <button onclick="cargarReporte()" style="background-color: #9C27B0; color: white;">🔄 Mostrar Todos los Registros</button>
-    <button onclick="exportarReporte()" style="background-color: #607D8B; color: white;">📄 Exportar a Excel</button>
+  <div class="form-row">
+    <button onclick="cargarReporte()" class="button-report">🔄 Mostrar Todos los Registros</button>
+    <button onclick="exportarReporte()" class="button-export">📄 Exportar a Excel</button>
   </div>
   <p class="report-message"></p>
 

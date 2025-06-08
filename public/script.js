@@ -6,16 +6,16 @@ let usuariosParaAsignacionMasiva = [];
 let gestoresMarkers = [];
 
 // *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
-window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
+window.GOOGLE_MAPS_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
 
 // Inyectar la API Key en la URL del script de Google Maps si no está presente.
 (function() {
     const googleMapsScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
     if (googleMapsScript && !googleMapsScript.src.includes('key=')) {
-        if (window.Maps_API_KEY) {
-            googleMapsScript.src = googleMapsScript.src.split('&callback')[0] + '&key=' + window.Maps_API_KEY + '&callback=' + googleMapsScript.src.split('&callback=')[1];
+        if (window.GOOGLE_MAPS_API_KEY) {
+            googleMapsScript.src = googleMapsScript.src.split('&callback')[0] + '&key=' + window.GOOGLE_MAPS_API_KEY + '&callback=' + googleMapsScript.src.split('&callback=')[1];
         } else {
-            console.error("Maps_API_KEY no está definida en window. No se pudo cargar Google Maps con una clave.");
+            console.error("GOOGLE_MAPS_API_KEY no está definida en window. No se pudo cargar Google Maps con una clave.");
         }
     }
 })();
@@ -285,7 +285,7 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
                         });
                         instructionsHTML += '</ol>';
 
-                        const googleMapsUrl = `http://maps.google.com/maps?saddr=${userPos.lat},${userPos.lng}&daddr=${clientePos.lat},${clientePos.lng}&dirflg=d`;
+                        const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${userPos.lat},${userPos.lng}&destination=${clientePos.lat},${clientePos.lng}&travelmode=driving`;
                         const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
 
                         document.getElementById('info-ruta').innerHTML = `
@@ -587,7 +587,7 @@ function registrarLlamada(btn, clienteId) {
                 if (document.querySelectorAll("#tablaClientes tbody tr").length === 0) {
                     document.querySelector("#tablaClientes tbody").innerHTML = `<tr><td colspan="10">¡Todos los clientes asignados han sido procesados!</td></tr>`;
                 }
-                if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin al registrar llamada
+                if (esAdmin) cargarKPIs();
             }, 500);
         } else {
             const errorCell = fila.querySelector('td:last-child');
@@ -661,9 +661,9 @@ function guardarAsignaciones() {
             msgEl.textContent = `✅ ${data.mensaje || 'Asignaciones guardadas exitosamente!'}`;
             setTimeout(() => msgEl.textContent = '', 3000);
         }
-        cargarTodosLosClientes(); // Recargar la tabla para mostrar solo los no asignados
+        cargarTodosLosClientes();
         if (!esAdmin && usuarioActual) cargarClientes(usuarioActual.id);
-        if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
+        if (esAdmin) cargarKPIs();
     })
     .catch(error => {
         console.error("Error al guardar asignaciones:", error);
@@ -747,8 +747,8 @@ async function asignarClientesMasivamente() {
         document.getElementById('selectAllClients').checked = false;
         toggleAllClients(document.getElementById('selectAllClients'));
         selectedUserElement.value = '';
-        cargarTodosLosClientes(); // Recargar la tabla para mostrar solo los no asignados
-        if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
+        cargarTodosLosClientes();
+        if (esAdmin) cargarKPIs();
     } catch (error) {
         console.error("Error al asignar clientes masivamente:", error);
         massAssignMessage.className = 'error';
@@ -830,7 +830,7 @@ function agregarUsuario() {
             passwordInput.value = "";
             cargarUsuarios();
             cargarTodosLosClientes();
-            if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
+            if (esAdmin) cargarKPIs();
         } else {
             throw new Error(data.mensaje || "Error desconocido al crear usuario");
         }
@@ -885,7 +885,7 @@ function eliminarUsuario(id) {
              msgEl.textContent = "✅ Usuario eliminado correctamente.";
             cargarUsuarios();
             cargarTodosLosClientes();
-            if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
+            if (esAdmin) cargarKPIs();
         } else {
             throw new Error(data.mensaje || "Error desconocido al eliminar usuario");
         }
@@ -922,7 +922,7 @@ function limpiarClientes() {
                 if (usuarioActual && !esAdmin) {
                     cargarClientes(usuarioActual.id);
                 }
-                if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
+                if (esAdmin) cargarKPIs();
             } else {
                  throw new Error(data.mensaje || "Error desconocido al limpiar clientes");
             }
@@ -1053,7 +1053,7 @@ function procesarArchivo(event) {
                     mensajeExcel.className = "success";
                     event.target.value = "";
                     cargarTodosLosClientes();
-                    if (esAdmin) cargarKPIs(); // Recargar KPIs si es admin
+                    if (esAdmin) cargarKPIs();
                 } else {
                     throw new Error(data.mensaje || "Error desconocido del servidor");
                 }
@@ -1289,7 +1289,6 @@ async function cargarYMostrarGestoresEnMapa() {
     }
 }
 
-// Nueva función para cargar y mostrar los KPIs
 async function cargarKPIs() {
     if (!esAdmin) return;
 
@@ -1311,9 +1310,51 @@ async function cargarKPIs() {
         document.getElementById('kpiRiesgoVerde').textContent = kpis.riesgoClientes.verde;
         document.getElementById('kpiRiesgoAmarillo').textContent = kpis.riesgoClientes.amarillo;
         document.getElementById('kpiRiesgoRojo').textContent = kpis.riesgoClientes.rojo;
-        document.getElementById('kpiMontoRiesgoAlto').textContent = `$${kpis.riesgoClientes.montoRiesgoAlto.toFixed(2)}`; // Asegurar 2 decimales
+        document.getElementById('kpiMontoRiesgoAlto').textContent = `$${kpis.riesgoClientes.montoRiesgoAlto.toFixed(2)}`;
 
-        console.log("KPIs cargados exitosamente.");
+        // Rendimiento de Gestores y Bonos
+        const tbodyRendimientoGestores = document.querySelector("#tablaRendimientoGestores tbody");
+        tbodyRendimientoGestores.innerHTML = "";
+
+        if (kpis.rendimientoGestores.length === 0) {
+            tbodyRendimientoGestores.innerHTML = `<tr><td colspan="10">No hay datos de rendimiento de gestores.</td></tr>`;
+        } else {
+            kpis.rendimientoGestores.forEach(gestor => {
+                const tr = document.createElement("tr");
+                let trendClass = '';
+                if (gestor.trendStatus === 'verde') {
+                    trendClass = 'trend-green';
+                } else if (gestor.trendStatus === 'amarillo') {
+                    trendClass = 'trend-yellow';
+                } else if (gestor.trendStatus === 'rojo') {
+                    trendClass = 'trend-red';
+                }
+
+                tr.className = trendClass; // Añadir clase para resaltar
+
+                tr.innerHTML = `
+                    <td>${gestor.nombre}</td>
+                    <td>$${gestor.montoCobrado}</td>
+                    <td>${gestor.efectividad}%</td>
+                    <td>${gestor.totalLlamadas}</td>
+                    <td>$${gestor.salarioBaseGanado}</td>
+                    <td>$${gestor.porcentajeBonoGanado}</td>
+                    <td>$${gestor.proximoNivelTarget}</td>
+                    <td>${gestor.proximoNivelPorcentaje}%</td>
+                    <td>$${gestor.projectedAmount}</td>
+                    <td>
+                        <span class="trend-indicator trend-${gestor.trendStatus}">
+                            ${gestor.trendStatus === 'verde' ? '⬆️ Excelente' : 
+                               gestor.trendStatus === 'amarillo' ? '➡️ En Curso' : 
+                               '⬇️ Bajo Objetivo'}
+                        </span>
+                    </td>
+                `;
+                tbodyRendimientoGestores.appendChild(tr);
+            });
+        }
+
+        console.log("KPIs de gestores cargados exitosamente.");
 
     } catch (error) {
         console.error("Error al cargar los KPIs:", error);
@@ -1328,6 +1369,7 @@ async function cargarKPIs() {
         document.getElementById('kpiRiesgoAmarillo').textContent = 'Error';
         document.getElementById('kpiRiesgoRojo').textContent = 'Error';
         document.getElementById('kpiMontoRiesgoAlto').textContent = 'Error';
+        document.querySelector("#tablaRendimientoGestores tbody").innerHTML = `<tr><td colspan="10" class="error">Error al cargar el rendimiento de gestores.</td></tr>`;
     }
 }
 
@@ -1351,4 +1393,4 @@ window.toggleAllClients = toggleAllClients;
 window.asignarClientesMasivamente = asignarClientesMasivamente;
 window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
 window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;
-window.cargarKPIs = cargarKPIs; // Exportar la nueva función
+window.cargarKPIs = cargarKPIs;

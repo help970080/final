@@ -19,7 +19,17 @@ const DB_FILE = '/opt/render/project/src/data/database.json';
 let dbCache = null;
 let lastDbUpdate = 0;
 
-const Maps_API_KEY = process.env.Maps_API_KEY; 
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY; 
+
+// Definición de los niveles de bono y cuotas
+const BONO_TIERS = [
+    { target: 10000, base_salary: 2000, percentage: 0.15 },
+    { target: 15000, base_salary: 3000, percentage: 0.16 },
+    { target: 20000, base_salary: 4000, percentage: 0.17 },
+    { target: 25000, base_salary: 5000, percentage: 0.18 },
+    { target: 30000, base_salary: 6000, percentage: 0.19 },
+];
+const PERIOD_DAYS = 15; // Días del período para el objetivo (15 días)
 
 function readDB() {
     const now = Date.now();
@@ -128,11 +138,11 @@ app.post('/cargar-clientes', async (req, res) => {
         for (const cliente of nuevosClientes) {
             let lat = null;
             let lng = null;
-            if (cliente.direccion && Maps_API_KEY) { 
+            if (cliente.direccion && GOOGLE_MAPS_API_KEY) { 
                 try {
                     let direccionCompleta = `${cliente.direccion}, CDMX, México`.replace(/,\s+/g, ', ').replace(/\s+/g, '+');
                     const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-                        params: { address: direccionCompleta, key: Maps_API_KEY, region: 'mx' }
+                        params: { address: direccionCompleta, key: GOOGLE_MAPS_API_KEY, region: 'mx' }
                     });
                     if (response.data.status === "OK") {
                         const location = response.data.results[0].geometry.location;
@@ -172,7 +182,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
                 mensaje: "La dirección proporcionada es demasiado corta o inválida. Debe tener al menos 5 caracteres." 
             });
         }
-        if (!Maps_API_KEY) {
+        if (!GOOGLE_MAPS_API_KEY) {
             return res.status(500).json({ status: "error", mensaje: "API Key de Google Maps no configurada en el servidor." });
         }
 
@@ -183,7 +193,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
         const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
             params: {
                 address: direccionCompleta.replace(/\s+/g, '+'),
-                key: Maps_API_KEY, 
+                key: GOOGLE_MAPS_API_KEY, 
                 region: 'mx',
                 components: 'country:MX',
                 bounds: '19.0,-99.5|19.6,-98.9'
@@ -405,11 +415,12 @@ app.get('/ubicaciones-gestores', (req, res) => {
     res.json(gestoresConUbicacion);
 });
 
-// Nuevo endpoint para obtener estadísticas (KPIs)
+// Nuevo endpoint para obtener estadísticas (KPIs) generales y de gestores
 app.get('/kpis', (req, res) => {
     const db = readDB();
     const clientes = db.clientes || [];
     const llamadas = db.llamadas || [];
+    const usuarios = db.usuarios.filter(u => u.id !== 0) || []; // Solo gestores, excluye admin
 
     const clientesTotales = clientes.length;
     const clientesAsignados = clientes.filter(c => c.asignado_a !== null).length;
@@ -424,10 +435,8 @@ app.get('/kpis', (req, res) => {
     const hoy = new Date().toISOString().split("T")[0];
     const clientesProcesadosHoy = llamadas.filter(l => l.fecha === hoy).length;
 
-    // Calcular KPIs de Riesgo
+    // Calcular KPIs de Riesgo (Semaforo)
     let riesgoClientes = { verde: 0, amarillo: 0, rojo: 0, montoRiesgoAlto: 0 };
-    const clientesDetalleRiesgo = []; // Para un posible detalle futuro si se requiere
-
     clientes.forEach(cliente => {
         let puntajeRiesgo = 0;
         const llamadasCliente = llamadas.filter(l => l.cliente_id === cliente.id);
@@ -444,17 +453,15 @@ app.get('/kpis', (req, res) => {
                     puntajeRiesgo += 5;
                     break;
                 case 'Éxito':
-                    puntajeRiesgo = Math.max(0, puntajeRiesgo - 10); // No bajar de 0
+                    puntajeRiesgo = Math.max(0, puntajeRiesgo - 10);
                     break;
             }
         });
 
-        // Ajuste por saldo exigible alto si ya hay riesgo
         if (cliente.saldo_exigible > 500 && puntajeRiesgo > 10) {
             puntajeRiesgo += 5;
         }
 
-        // Clasificación por semáforo
         let clasificacionRiesgo = 'verde';
         if (puntajeRiesgo >= 40) {
             clasificacionRiesgo = 'rojo';
@@ -466,14 +473,94 @@ app.get('/kpis', (req, res) => {
         }
 
         riesgoClientes[clasificacionRiesgo]++;
-        clientesDetalleRiesgo.push({
-            clienteId: cliente.id,
-            nombre: cliente.nombre,
-            puntajeRiesgo: puntajeRiesgo,
-            clasificacion: clasificacionRiesgo
-        });
     });
 
+    // Calcular KPIs de Rendimiento de Gestores y Bonos
+    const rendimientoGestores = usuarios.map(gestor => {
+        const llamadasGestor = llamadas.filter(l => l.usuario_id === gestor.id);
+        const montoCobradoGestor = llamadasGestor.reduce((sum, l) => sum + (parseFloat(l.monto_cobrado) || 0), 0);
+        const llamadasExitoGestor = llamadasGestor.filter(l => l.resultado === 'Éxito').length;
+        const efectividadGestor = llamadasGestor.length > 0 ? (llamadasExitoGestor / llamadasGestor.length * 100).toFixed(2) : 0;
+        const totalLlamadasGestor = llamadasGestor.length;
+
+        // Calcular bono y porcentaje de cuota
+        let salarioBaseGanado = 0;
+        let porcentajeBonoGanado = 0;
+        let cuotaActualNivel = 0;
+        let proximoNivelTarget = null;
+        let proximoNivelPorcentaje = null;
+
+        let reachedTier = null;
+        for (let i = BONO_TIERS.length - 1; i >= 0; i--) {
+            if (montoCobradoGestor >= BONO_TIERS[i].target) {
+                reachedTier = BONO_TIERS[i];
+                break;
+            }
+        }
+
+        if (reachedTier) {
+            salarioBaseGanado = reachedTier.base_salary;
+            porcentajeBonoGanado = montoCobradoGestor * reachedTier.percentage;
+            cuotaActualNivel = reachedTier.target;
+        }
+
+        // Encontrar el próximo nivel para la tendencia
+        for (const tier of BONO_TIERS) {
+            if (montoCobradoGestor < tier.target) {
+                proximoNivelTarget = tier.target;
+                proximoNivelPorcentaje = ((montoCobradoGestor / tier.target) * 100).toFixed(2);
+                break;
+            }
+        }
+        if (proximoNivelTarget === null && montoCobradoGestor >= BONO_TIERS[BONO_TIERS.length - 1].target) {
+            proximoNivelTarget = BONO_TIERS[BONO_TIERS.length - 1].target; // Ya alcanzó el nivel más alto
+            proximoNivelPorcentaje = 100;
+        } else if (proximoNivelTarget === null) { // Si no alcanzó el primer nivel
+            proximoNivelTarget = BONO_TIERS[0].target;
+            proximoNivelPorcentaje = ((montoCobradoGestor / BONO_TIERS[0].target) * 100).toFixed(2);
+        }
+
+        // Proyección a 15 días (tendencia)
+        // ASUNCIÓN: Días transcurridos. Para una tendencia real, necesitaríamos el día actual del periodo de 15 días.
+        // Aquí usaremos una aproximación: si tenemos registros de hoy, asumimos que hoy es un día activo.
+        // Si no hay llamadas hoy, la proyección sería 0.
+        const firstCallDate = llamadasGestor.length > 0 ? new Date(Math.min(...llamadasGestor.map(l => new Date(l.fecha)))) : null;
+        const today = new Date();
+        let daysTranscurred = 1; // Asumimos al menos 1 día para evitar división por cero
+        if (firstCallDate) {
+            daysTranscurred = Math.floor((today.getTime() - firstCallDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            daysTranscurred = Math.min(daysTranscurred, PERIOD_DAYS); // No exceder el periodo total
+        }
+
+        let projectedAmount = 0;
+        if (daysTranscurred > 0) {
+             projectedAmount = (montoCobradoGestor / daysTranscurred) * PERIOD_DAYS;
+        }
+
+        let trendStatus = 'neutral'; // verde, amarillo, rojo
+        if (projectedAmount >= (proximoNivelTarget || BONO_TIERS[0].target) * 0.95) { // 95% del próximo objetivo
+            trendStatus = 'verde';
+        } else if (projectedAmount >= (proximoNivelTarget || BONO_TIERS[0].target) * 0.75) { // 75% del próximo objetivo
+            trendStatus = 'amarillo';
+        } else {
+            trendStatus = 'rojo';
+        }
+
+        return {
+            id: gestor.id,
+            nombre: gestor.nombre,
+            montoCobrado: montoCobradoGestor.toFixed(2),
+            efectividad: efectividadGestor,
+            totalLlamadas: totalLlamadasGestor,
+            salarioBaseGanado: salarioBaseGanado.toFixed(2),
+            porcentajeBonoGanado: porcentajeBonoGanado.toFixed(2),
+            cuotaAlcanzada: cuotaActualNivel,
+            proximoNivelTarget: proximoNivelTarget,
+            proximoNivelPorcentaje: proximoNivelPorcentaje,
+            projectedAmount: projectedAmount.toFixed(2),
+            trendStatus: trendStatus // Nuevo campo para resaltar
+        };
+    });
 
     res.json({
         clientesTotales,
@@ -483,17 +570,18 @@ app.get('/kpis', (req, res) => {
         montoTotalCobrado: montoTotalCobrado.toFixed(2),
         efectividadLlamadas,
         clientesProcesadosHoy,
-        riesgoClientes // Añadimos los KPIs de riesgo
+        riesgoClientes,
+        rendimientoGestores // Añadimos el rendimiento de los gestores
     });
 });
 
 
 app.listen(PORT, () => {
     console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
-    console.log(`Google Maps API Key (server): ${Maps_API_KEY ? 'Cargada' : 'ERROR: No cargada'}`);
+    console.log(`Google Maps API Key (server): ${GOOGLE_MAPS_API_KEY ? 'Cargada' : 'ERROR: No cargada'}`);
     const dataDir = path.dirname(DB_FILE);
     if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
+        fs.mkdirSync(dir, { recursive: true });
         console.log(`📂 Directorio de datos creado en: ${dataDir}`);
     }
     console.log(`💾 Ruta de base de datos: ${DB_FILE}`);

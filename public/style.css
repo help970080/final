@@ -76,6 +76,22 @@ button:active {
   transform: translateY(0);
 }
 
+/* Clases de botones con nombres más descriptivos */
+.button-primary { background-color: #2196F3; color: white; }
+.button-primary:hover { background-color: #1976D2; }
+.button-success { background-color: #4CAF50; color: white; }
+.button-success:hover { background-color: #45a049; }
+.button-danger { background-color: #ff4444; color: white; }
+.button-danger:hover { background-color: #cc0000; }
+.button-purple { background-color: #8E24AA; color: white; }
+.button-purple:hover { background-color: #7B1FA2; }
+.button-map { background-color: #4285F4; color: white; }
+.button-map:hover { background-color: #3367D6; }
+.button-report { background-color: #9C27B0; color: white; }
+.button-report:hover { background-color: #7B1FA2; }
+.button-export { background-color: #607D8B; color: white; }
+.button-export:hover { background-color: #455A64; }
+
 .btn-geo {
   padding: 5px 10px;
   font-size: 0.8rem;
@@ -149,12 +165,17 @@ input:focus, select:focus {
 }
 
 /* Estilos para el mapa */
+.map-container {
+  display: flex;
+  gap: 20px;
+}
 #mapa {
   height: 500px;
   width: 100%;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  flex: 2; /* Para que el mapa ocupe 2/3 del espacio */
 }
 
 #info-ruta {
@@ -162,6 +183,7 @@ input:focus, select:focus {
   padding: 20px;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
+  flex: 1; /* Para que la info ocupe 1/3 del espacio */
 }
 
 /* Enlaces de teléfono */
@@ -213,46 +235,22 @@ input:focus, select:focus {
   animation: spin 1s linear infinite;
 }
 
-/* Styles for Mass Assignment Section (optional, but good for clarity) */
-#seccionAsignacion h3 {
-    border-bottom: 1px solid #e2e8f0;
-    padding-bottom: 10px;
-    margin-bottom: 15px;
-}
-
-/* Styles for messages in admin sections */
-.admin-message, .mass-assign-message, .report-message {
-    padding: 10px;
-    margin-bottom: 15px;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    font-weight: 500;
-}
-
-.admin-message.info, .mass-assign-message.info, .report-message.info {
-    background-color: #e0f2fe; /* Light blue */
-    color: #0c4a6e;
-}
-
-.admin-message.success, .mass-assign-message.success, .report-message.success {
-    background-color: #d1fae5; /* Light green */
-    color: #065f46;
-}
-
-.admin-message.error, .mass-assign-message.error, .report-message.error {
-    background-color: #fee2e2; /* Light red */
-    color: #991b1b;
-}
-
-/* Adjust button styles for mass assignment */
-button[onclick="asignarClientesMasivamente()"] {
-    background-color: #673AB7; /* Purple for distinct action */
-}
-button[onclick="asignarClientesMasivamente()"]:hover {
-    background-color: #512DA8;
-}
-
 /* Estilos para las tarjetas de KPI */
+.kpi-section-card { /* Nueva clase para los div contenedores de KPIs */
+  background: #f5f5f5; /* Color base más suave */
+  padding: 20px;
+  border-radius: 12px;
+  margin-bottom: 25px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid #e2e8f0;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
 .kpi-card {
   background-color: #f0f8ff; /* Azul claro */
   border: 1px solid #b3e0ff;
@@ -275,39 +273,104 @@ button[onclick="asignarClientesMasivamente()"]:hover {
   color: #007bff; /* Azul primario */
 }
 
+.kpi-update-button { /* Botón general de actualizar KPIs */
+  margin-top: 15px;
+  background-color: #007bff;
+  color: white;
+  width: auto; /* Ajustar ancho para que no ocupe todo el espacio */
+  padding: 8px 15px;
+  font-size: 0.85rem;
+}
+
+.kpi-risk-background { /* Fondo para la sección de riesgo */
+  background: #fff3e0;
+  border-color: #ffe0b2;
+}
+
+.kpi-risk-button { /* Botón de riesgo */
+  background-color: #ffc107;
+  color: #333;
+}
+.kpi-risk-button:hover {
+  background-color: #e0a800;
+}
+
+.kpi-performance-background { /* Fondo para la sección de rendimiento */
+    background: #e9f0f9;
+    border-color: #c7d8ed;
+}
+.kpi-performance-button { /* Botón de rendimiento */
+    background-color: #6c757d; /* Gris oscuro */
+}
+.kpi-performance-button:hover {
+    background-color: #5a6268;
+}
+
 /* Colores específicos para KPIs de riesgo */
 .kpi-riesgo-verde {
-  background-color: #e0ffe0; /* Verde muy claro */
+  background-color: #e0ffe0;
   border-color: #88cc88;
 }
 .kpi-riesgo-verde .kpi-value, .kpi-riesgo-verde h4 {
-  color: #28a745; /* Verde Bootstrap */
+  color: #28a745;
 }
 
 .kpi-riesgo-amarillo {
-  background-color: #fffacd; /* Amarillo claro */
+  background-color: #fffacd;
   border-color: #ffd700;
 }
 .kpi-riesgo-amarillo .kpi-value, .kpi-riesgo-amarillo h4 {
-  color: #ffc107; /* Amarillo Bootstrap */
+  color: #ffc107;
 }
 
 .kpi-riesgo-rojo {
-  background-color: #ffe0e0; /* Rojo muy claro */
+  background-color: #ffe0e0;
   border-color: #ff8888;
 }
 .kpi-riesgo-rojo .kpi-value, .kpi-riesgo-rojo h4 {
-  color: #dc3545; /* Rojo Bootstrap */
+  color: #dc3545;
 }
 
 .kpi-riesgo-monto-rojo {
-  background-color: #ffdddd; /* Rojo un poco más oscuro para el monto */
+  background-color: #ffdddd;
   border-color: #ff6666;
 }
 .kpi-riesgo-monto-rojo .kpi-value, .kpi-riesgo-monto-rojo h4 {
-  color: #c82333; /* Rojo más oscuro */
+  color: #c82333;
 }
 
+/* Estilos para las filas de rendimiento de gestores (Tendencia) */
+.trend-green {
+  background-color: #d4edda !important; /* Verde claro */
+  border-left: 5px solid #28a745;
+}
+.trend-yellow {
+  background-color: #fff3cd !important; /* Amarillo claro */
+  border-left: 5px solid #ffc107;
+}
+.trend-red {
+  background-color: #f8d7da !important; /* Rojo claro */
+  border-left: 5px solid #dc3545;
+}
+.trend-indicator {
+  font-weight: bold;
+  padding: 3px 8px;
+  border-radius: 4px;
+  display: inline-block;
+  font-size: 0.85em;
+}
+.trend-green .trend-indicator {
+  background-color: #28a745;
+  color: white;
+}
+.trend-yellow .trend-indicator {
+  background-color: #ffc107;
+  color: #333;
+}
+.trend-red .trend-indicator {
+  background-color: #dc3545;
+  color: white;
+}
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -320,8 +383,16 @@ button[onclick="asignarClientesMasivamente()"]:hover {
     font-size: 0.9rem;
   }
   
+  .map-container {
+    flex-direction: column; /* Apilar en pantallas pequeñas */
+  }
   #mapa {
-    height: 300px;
+    flex: none; /* Eliminar flex-grow */
+    height: 300px; /* Reducir altura en móvil */
+  }
+  #info-ruta {
+    flex: none; /* Eliminar flex-grow */
+    margin-top: 15px;
   }
   
   .telefono-link {
@@ -340,5 +411,17 @@ button[onclick="asignarClientesMasivamente()"]:hover {
     display: block;
     margin-left: 0;
     margin-top: 4px;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr; /* Una columna en móvil */
+  }
+
+  .admin-section-card, .kpi-section-card, .mass-assign-section {
+    padding: 15px;
+  }
+  .form-row {
+    flex-direction: column;
+    gap: 10px;
   }
 }
