@@ -6,16 +6,16 @@ let usuariosParaAsignacionMasiva = [];
 let gestoresMarkers = [];
 
 // *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
-window.GOOGLE_MAPS_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
+window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
 
 // Inyectar la API Key en la URL del script de Google Maps si no está presente.
 (function() {
     const googleMapsScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
     if (googleMapsScript && !googleMapsScript.src.includes('key=')) {
-        if (window.GOOGLE_MAPS_API_KEY) {
-            googleMapsScript.src = googleMapsScript.src.split('&callback')[0] + '&key=' + window.GOOGLE_MAPS_API_KEY + '&callback=' + googleMapsScript.src.split('&callback=')[1];
+        if (window.Maps_API_KEY) {
+            googleMapsScript.src = googleMapsScript.src.split('&callback')[0] + '&key=' + window.Maps_API_KEY + '&callback=' + googleMapsScript.src.split('&callback=')[1];
         } else {
-            console.error("GOOGLE_MAPS_API_KEY no está definida en window. No se pudo cargar Google Maps con una clave.");
+            console.error("Maps_API_KEY no está definida en window. No se pudo cargar Google Maps con una clave.");
         }
     }
 })();
@@ -86,7 +86,7 @@ window.addEventListener("load", () => {
             document.getElementById("seccionAsignacion").classList.remove("hidden");
             cargarTodosLosClientes(); 
             cargarUsuarios();
-            cargarKPIs(); // Carga KPIs generales y de riesgo
+            cargarKPIs(); 
         } else {
             document.getElementById("seccionAdmin").classList.add("hidden");
             document.getElementById("seccionAsignacion").classList.add("hidden");
@@ -738,7 +738,7 @@ async function asignarClientesMasivamente() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.mensaje || `Error HTTP ${response.status}`);
+            throw new Error(data.mensaje || `Error HTTP ${res.status}`);
         }
 
         massAssignMessage.className = 'success';
@@ -943,6 +943,10 @@ function limpiarClientes() {
 function procesarArchivo(event) {
     const file = event.target.files[0];
     const mensajeExcel = document.getElementById("mensajeExcel");
+    const excelFileInput = document.getElementById('excelFile'); // Obtener el input de archivo
+    
+    mensajeExcel.textContent = ""; // Limpiar mensaje anterior
+    mensajeExcel.className = "info"; // Clase por defecto
 
     if (!file) {
         mensajeExcel.textContent = "❌ No se seleccionó ningún archivo.";
@@ -952,8 +956,9 @@ function procesarArchivo(event) {
 
     mensajeExcel.textContent = "Procesando archivo Excel...";
     mensajeExcel.className = "info";
-    const botonCargar = event.target;
-    if(botonCargar) botonCargar.disabled = true;
+    
+    // Deshabilitar input y mostrar estado
+    excelFileInput.disabled = true;
 
 
     const reader = new FileReader();
@@ -968,8 +973,8 @@ function procesarArchivo(event) {
             if (rows.length === 0) {
                 mensajeExcel.textContent = "❌ El archivo Excel está vacío o no tiene datos en la primera hoja.";
                 mensajeExcel.className = "error";
-                if(botonCargar) botonCargar.disabled = false;
-                event.target.value = "";
+                excelFileInput.disabled = false; // Re-habilitar
+                excelFileInput.value = ""; // Resetear el input file
                 return;
             }
             
@@ -1000,8 +1005,8 @@ function procesarArchivo(event) {
             if (!colNombre) {
                 mensajeExcel.textContent = "❌ No se encontró una columna de 'Nombre' o 'Cliente' en el Excel.";
                 mensajeExcel.className = "error";
-                if(botonCargar) botonCargar.disabled = false;
-                event.target.value = "";
+                excelFileInput.disabled = false; // Re-habilitar
+                excelFileInput.value = "";
                 return;
             }
 
@@ -1026,8 +1031,8 @@ function procesarArchivo(event) {
             if (clientesExcel.length === 0) {
                 mensajeExcel.textContent = "❌ No se encontraron datos de clientes válidos en el archivo.";
                 mensajeExcel.className = "error";
-                if(botonCargar) botonCargar.disabled = false;
-                event.target.value = "";
+                excelFileInput.disabled = false; // Re-habilitar
+                excelFileInput.value = "";
                 return;
             }
 
@@ -1051,7 +1056,7 @@ function procesarArchivo(event) {
                     }
                     mensajeExcel.textContent = msg;
                     mensajeExcel.className = "success";
-                    event.target.value = "";
+                    excelFileInput.value = ""; // Reset file input
                     cargarTodosLosClientes();
                     if (esAdmin) cargarKPIs();
                 } else {
@@ -1062,14 +1067,14 @@ function procesarArchivo(event) {
                 mensajeExcel.textContent = `❌ Error al cargar clientes: ${error.message}`;
                 mensajeExcel.className = "error";
             }).finally(()=>{
-                 if(botonCargar) botonCargar.disabled = false;
+                 excelFileInput.disabled = false; // Asegurar que el input se re-habilita
             });
         } catch (error) {
             console.error("Error al procesar archivo Excel:", error);
             mensajeExcel.textContent = "❌ Error crítico al leer el archivo Excel. Asegúrate que el formato es correcto.";
             mensajeExcel.className = "error";
-            if(botonCargar) botonCargar.disabled = false;
-            event.target.value = "";
+            excelFileInput.disabled = false; // Re-habilitar
+            excelFileInput.value = "";
         }
     };
     reader.readAsArrayBuffer(file);
@@ -1330,7 +1335,7 @@ async function cargarKPIs() {
                     trendClass = 'trend-red';
                 }
 
-                tr.className = trendClass; // Añadir clase para resaltar
+                tr.className = trendClass;
 
                 tr.innerHTML = `
                     <td>${gestor.nombre}</td>

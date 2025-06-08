@@ -114,7 +114,7 @@
 
   <div class="admin-section-card">
     <h3>📤 Subir Clientes desde Excel</h3>
-    <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" />
+    <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="procesarArchivo(event)" />
     <p id="mensajeExcel" class="info"></p>
     <button onclick="limpiarClientes()" class="button-danger">🧹 Limpiar Todos los Clientes</button>
   </div>
