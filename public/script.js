@@ -163,15 +163,15 @@ function cargarClientes(usuarioId) {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
                     <td>${cliente.nombre}</td>
-                    <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a> <button onclick="enviarWhatsapp('${cliente.telefono}', '${cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
+                    <td>${cliente.telefono ? `<a href="tel:<span class="math-inline">\{cliente\.telefono\}" class\="telefono\-link"\></span>{cliente.telefono}</a> <button onclick="enviarWhatsapp('<span class="math-inline">\{cliente\.telefono\}', '</span>{cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
                     <td>${cliente.direccion || "-"}
                       <button onclick="geocodificarCliente(${cliente.id}, this)" class="btn-geo">
                         🌍 Geolocalizar
                       </button>
                       <span id="geo-status-${cliente.id}" class="geo-status">
                         ${cliente.lat && cliente.lng ? 
-                            // CORRECCIÓN FINAL EN ESTA LÍNEA
-                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${CSS.escape(cliente.direccion)}')"` + ` class="btn-map-shortcut">Ver en Mapa</button>` 
+                            // CORRECCIÓN FINAL EN ESTA LÍNEA (quitado el `"` extra)
+                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, <span class="math-inline">\{cliente\.lng\}, '</span>{CSS.escape(cliente.direccion)}')" class="btn-map-shortcut">Ver en Mapa</button>` 
                             : ''}
                       </span>
                     </td>
@@ -258,7 +258,7 @@ async function geocodificarCliente(clienteId, boton) {
             // CORRECCIÓN FINAL EN ESTA LÍNEA
             statusElement.innerHTML = `
                 <span class="geo-status geo-success">✓ Ubicada</span>
-                <button onclick="abrirEnGoogleMaps(${data.lat}, ${data.lng}, '${CSS.escape(data.direccion_formateada || direccion)}')"` + ` class="btn-map-shortcut">Ver en Mapa</button>
+                <button onclick="abrirEnGoogleMaps(${data.lat}, ${data.lng}, '${CSS.escape(data.direccion_formateada || direccion)}')" class="btn-map-shortcut">Ver en Mapa</button>
             `;
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
@@ -443,7 +443,7 @@ function cargarTodosLosClientes() {
                         tr.innerHTML = `
                             <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td>
                             <td>${cliente.nombre}</td>
-                            <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a>` : "-"}</td>
+                            <td>${cliente.telefono ? `<a href="tel:<span class="math-inline">\{cliente\.telefono\}" class\="telefono\-link"\></span>{cliente.telefono}</a>` : "-"}</td>
                             <td>${cliente.direccion || "-"}</td>
                             <td>${cliente.tarifa || "-"}</td>
                             <td>${cliente.saldo_exigible || "-"}</td>
@@ -451,7 +451,7 @@ function cargarTodosLosClientes() {
                             <td>
                                 <select class="usuarioSelect" data-id="${cliente.id}">
                                     <option value="">-- Sin asignar --</option>
-                                    ${usuarios.map(u => `<option value="${u.id}" ${cliente.asignado_a === u.id ? "selected" : ""}>${u.nombre}</option>`).join("")}
+                                    ${usuarios.map(u => `<option value="${u.id}" <span class="math-inline">\{cliente\.asignado\_a \=\=\= u\.id ? "selected" \: ""\}\></span>{u.nombre}</option>`).join("")}
                                 </select>
                             </td>
                         `;
@@ -573,7 +573,7 @@ function inicializarMapaManual() {
             },
             (error) => {
                 clearTimeout(geoTimeout);
-                console.warn("Error al obtener ubicación del usuario:", error.message);
+                console.warn("Error obteniendo ubicación del usuario:", error.message);
                 let errorMsg = "Error al obtener tu ubicación: ";
                 switch(error.code) {
                     case error.PERMISSION_DENIED: errorMsg += "Permiso denegado."; break;
@@ -875,4 +875,41 @@ function cargarUsuarios() {
         })
         .catch(error => {
             console.error("Error al cargar usuarios:", error);
-            document.querySelector("#tablaUsuarios tbody").innerHTML = `<tr><td colspan="3" class="error">Error al cargar usuarios: ${error.message}`.
+            document.querySelector("#tablaUsuarios tbody").innerHTML = `<tr><td colspan="3" class="error">Error al cargar usuarios: ${error.message}`;
+        });
+}
+
+function agregarUsuario() {
+    const nombreInput = document.getElementById("nuevoUsuarioNombre");
+    const passwordInput = document.getElementById("nuevoUsuarioPassword");
+    const nombre = nombreInput.value.trim();
+    const password = passwordInput.value.trim();
+
+    const botonAgregar = document.querySelector('button[onclick="agregarUsuario()"]');
+
+    if (!nombre || !password) {
+        const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
+        msgEl.className = 'admin-message error';
+        msgEl.textContent = "❌ Nombre y contraseña son obligatorios.";
+        return;
+    }
+    
+    if(botonAgregar) {
+        botonAgregar.disabled = true;
+        botonAgregar.textContent = 'Agregando...';
+    }
+
+    fetch("/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nombre, password })
+    })
+    .then(res => {
+        if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
+        return res.json();
+    })
+    .then(data => {
+        if (data.status === "ok") {
+            const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
+            msgEl.className = 'admin-message success';
+            msgEl.textContent = `✅ Usuario "${data.usuario.nombre}" creado exitosamente.`
