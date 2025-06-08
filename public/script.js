@@ -6,19 +6,42 @@ let usuariosParaAsignacionMasiva = [];
 let gestoresMarkers = [];
 
 // *** PUNTO CLAVE 1: Configura tu API Key de Google Maps aquí ***
+// Este valor es el que Google Cloud te dice "debes pasar con el parámetro key=API_KEY"
 window.Maps_API_KEY = 'AIzaSyC29ORCKKiOHa-PYtWI5_UjbNQ8vvTXP9k'; // <-- ¡Reemplaza con tu clave real!
 
-// Inyectar la API Key en la URL del script de Google Maps si no está presente.
-(function() {
-    const googleMapsScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
-    if (googleMapsScript && !googleMapsScript.src.includes('key=')) {
-        if (window.Maps_API_KEY) {
-            googleMapsScript.src = googleMapsScript.src.split('&callback')[0] + '&key=' + window.Maps_API_KEY + '&callback=' + googleMapsScript.src.split('&callback=')[1];
-        } else {
-            console.error("Maps_API_KEY no está definida en window. No se pudo cargar Google Maps con una clave.");
+// NUEVA FORMA DE CARGAR LA API DE GOOGLE MAPS
+// Esto asegura que la clave API esté en la URL desde el principio.
+function loadGoogleMapsScript() {
+    if (window.google && window.google.maps) {
+        // La API ya está cargada
+        console.log("Google Maps API ya cargada.");
+        if (typeof window.googleMapsApiLoadedCallback === 'function') {
+            window.googleMapsApiLoadedCallback();
         }
+        return;
     }
-})();
+
+    if (!window.Maps_API_KEY) {
+        console.error("Maps_API_KEY no está definida. No se puede cargar Google Maps.");
+        // Mostrar mensaje de error al usuario o deshabilitar funcionalidad del mapa
+        if (document.getElementById('info-ruta')) {
+            document.getElementById('info-ruta').innerHTML = '<p class="error">Error: API Key de Google Maps no configurada. Contacta al administrador.</p>';
+        }
+        return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${window.Maps_API_KEY}&libraries=places,geometry&callback=inicializarMapa`;
+    script.async = true;
+    script.defer = true;
+    script.onerror = () => {
+        console.error("Error al cargar el script de Google Maps. Verifique su conexión o API Key.");
+        if (document.getElementById('info-ruta')) {
+            document.getElementById('info-ruta').innerHTML = '<p class="error">Error al cargar Google Maps. Verifique conexión y API Key.</p>';
+        }
+    };
+    document.head.appendChild(script);
+}
 
 
 function login() {
@@ -58,14 +81,20 @@ function login() {
 
 window.googleMapsApiLoadedCallback = function() {
     console.log("Google Maps API cargada y lista.");
-    if (window.location.pathname.includes("clientes.html") && esAdmin) {
-        inicializarMapaManual();
-        // El intervalo para actualizar el mapa se gestiona dentro de inicializarMapaManual()
+    if (window.location.pathname.includes("clientes.html")) {
+        // Solo inicializar el mapa para el admin al cargar la página si la API ya está lista
+        // Para gestores, el mapa se inicializa al hacer clic en el botón "Recargar Mapa / Ubicaciones"
+        if (esAdmin) {
+            inicializarMapaManual();
+            // El intervalo para actualizar el mapa se gestiona dentro de inicializarMapaManual()
+        }
     }
 };
 
 function mostrarMensajeFlotante(mensaje) {
     const floatingMessage = document.getElementById('floatingMessage');
+    if (!floatingMessage) return; // Asegurarse de que el elemento existe
+
     floatingMessage.textContent = mensaje;
     floatingMessage.classList.remove('hidden');
     setTimeout(() => {
@@ -95,9 +124,12 @@ window.addEventListener("load", () => {
         const today = new Date();
         const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
         const yyyy = firstDayOfMonth.getFullYear();
-        const mm = String(firstDayOfMonth.getMonth() + 1).padStart(2, '0'); // Months start at 0!
+        const mm = String(firstDayOfMonth.getMonth() + 1).padStart(2, '0');
         const dd = String(firstDayOfMonth.getDate()).padStart(2, '0');
-        document.getElementById('fechaInicioBonos').value = `${yyyy}-${mm}-${dd}`;
+        const fechaInicioBonosInput = document.getElementById('fechaInicioBonos');
+        if (fechaInicioBonosInput) {
+            fechaInicioBonosInput.value = `<span class="math-inline">\{yyyy\}\-</span>{mm}-${dd}`;
+        }
 
 
         if (esAdmin) {
@@ -106,12 +138,14 @@ window.addEventListener("load", () => {
             cargarTodosLosClientes(); 
             cargarUsuarios();
             cargarKPIsConFecha(); // Carga KPIs generales y de riesgo al inicio con la fecha por defecto
+            loadGoogleMapsScript(); // Cargar API de Google Maps cuando el admin está logueado
         } else {
             document.getElementById("seccionAdmin").classList.add("hidden");
             document.getElementById("seccionAsignacion").classList.add("hidden");
             cargarClientes(usuarioActual.id);
             solicitarYEnviarUbicacion();
             setInterval(solicitarYEnviarUbicacion, 30 * 60 * 1000);
+            loadGoogleMapsScript(); // También cargarla para gestores si van a usar el mapa
         }
     }
 });
@@ -134,10 +168,10 @@ function cargarClientes(usuarioId) {
             clientes.forEach(cliente => {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
-                    <td>${cliente.nombre}</td>
-                    <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a> <button onclick="enviarWhatsapp('${cliente.telefono}', '${cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
-                    <td>${cliente.direccion || "-"}
-                      <button onclick="geocodificarCliente(${cliente.id}, this)" class="btn-geo">
+                    <td><span class="math-inline">\{cliente\.nombre\}</td\>
+<td\></span>{cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a> <button onclick="enviarWhatsapp('${cliente.telefono}', '${cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
+                    <td><span class="math-inline">\{cliente\.direccion \|\| "\-"\}
+<button onclick\="geocodificarCliente\(</span>{cliente.id}, this)" class="btn-geo">
                         🌍 Geolocalizar
                       </button>
                       <span id="geo-status-${cliente.id}" class="geo-status">
@@ -146,20 +180,20 @@ function cargarClientes(usuarioId) {
                             : ''}
                       </span>
                     </td>
-                    <td>${cliente.tarifa || "-"}</td>
-                    <td>${cliente.saldo_exigible || "-"}</td>
-                    <td>${cliente.saldo || "-"}</td>
-                    <td><input type="number" class="monto" data-id="${cliente.id}" /></td>
+                    <td><span class="math-inline">\{cliente\.tarifa \|\| "\-"\}</td\>
+<td\></span>{cliente.saldo_exigible || "-"}</td>
+                    <td><span class="math-inline">\{cliente\.saldo \|\| "\-"\}</td\>
+<td\><input type\="number" class\="monto" data\-id\="</span>{cliente.id}" /></td>
                     <td>
-                        <select class="resultado" data-id="${cliente.id}">
-                            <option value="">Selecciona</option>
-                            <option value="Éxito">Éxito</option>
-                            <option value="En proceso">En proceso</option>
-                            <option value="No contestó">No contestó</option>
-                            <option value="Rechazado">Rechazado</option>
-                        </select>
-                    </td>
-                    <td><input type="text" class="observaciones" data-id="${cliente.id}" /></td>
+                        <select class="resultado" data-id="<span class="math-inline">\{cliente\.id\}"\>
+<option value\=""\>Selecciona</option\>
+<option value\="Éxito"\>Éxito</option\>
+<option value\="En proceso"\>En proceso</option\>
+<option value\="No contestó"\>No contestó</option\>
+<option value\="Rechazado"\>Rechazado</option\>
+</select\>
+</td\>
+<td\><input type\="text" class\="observaciones" data\-id\="</span>{cliente.id}" /></td>
                     <td><button onclick="registrarLlamada(this, ${cliente.id})">Registrar</button></td>
                 `;
                 tbody.appendChild(tr);
@@ -192,7 +226,7 @@ function enviarWhatsapp(telefono, nombreCliente) {
 
     const mensaje = encodeURIComponent(`Hola ${nombreCliente},\nLe escribo de su compañía de gestión de cobranza. Me gustaría hablar sobre su saldo pendiente y las opciones de pago disponibles. ¿Podría indicarnos un buen momento para contactarle?\n\nGracias.`);
     
-    const whatsappUrl = `https://wa.me/${numeroLimpio}?text=${mensaje}`;
+    const whatsappUrl = `https://wa.me/<span class="math-inline">\{numeroLimpio\}?text\=</span>{mensaje}`;
     window.open(whatsappUrl, '_blank');
 }
 
@@ -228,7 +262,7 @@ async function geocodificarCliente(clienteId, boton) {
         if (data.status === "ok") {
             statusElement.innerHTML = `
                 <span class="geo-status geo-success">✓ Ubicada</span>
-                <button onclick="abrirEnGoogleMaps(${data.lat}, ${data.lng}, '${data.direccion_formateada || direccion}')" class="btn-map-shortcut">Ver en Mapa</button>
+                <button onclick="abrirEnGoogleMaps(${data.lat}, <span class="math-inline">\{data\.lng\}, '</span>{data.direccion_formateada || direccion}')" class="btn-map-shortcut">Ver en Mapa</button>
             `;
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
@@ -259,7 +293,6 @@ async function geocodificarCliente(clienteId, boton) {
     }
 }
 
-// Asegurarse de que mostrarRuta esté definida antes de mostrarClienteEnMapa
 function mostrarRuta(map, directionsRenderer, origen, cliente) {
     if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
         console.error("Google Maps API no está disponible.");
@@ -283,11 +316,11 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             const leg = route.legs[0];
             let instructionsHTML = '<h4>Indicaciones detalladas:</h4><ol style="padding-left: 20px; max-height: 200px; overflow-y: auto;">';
             leg.steps.forEach(step => {
-                instructionsHTML += `<li style="margin-bottom: 5px;">${step.instructions} <span style="font-size:0.9em; color:#555;">(${step.distance.text}, ${step.duration.text})</span></li>`;
+                instructionsHTML += `<li style="margin-bottom: 5px;"><span class="math-inline">\{step\.instructions\} <span style\="font\-size\:0\.9em; color\:\#555;"\>\(</span>{step.distance.text}, ${step.duration.text})</span></li>`;
             });
             instructionsHTML += '</ol>';
 
-            const googleMapsUrl = `http://maps.google.com/maps?saddr=${origen.lat},${origen.lng}&daddr=${destino.lat},${destino.lng}&dirflg=d`;
+            const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=<span class="math-inline">\{origen\.lat\},</span>{origen.lng}&destination=<span class="math-inline">\{destino\.lat\},</span>{destino.lng}&travelmode=driving`;
             const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
 
             document.getElementById('info-ruta').innerHTML = `
@@ -329,9 +362,18 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
 
     document.getElementById('info-ruta').innerHTML = `<h3>Cliente: ${nombreCliente}</h3><p><strong>Dirección:</strong> ${direccion}</p><p>Calculando ruta...</p>`;
 
+    // Se establece un timeout para la geolocalización. Si el navegador no responde, se asume un fallo.
+    const geoTimeout = setTimeout(() => {
+        console.warn("Tiempo de espera agotado para la geolocalización. Verifique permisos o conexión.");
+        document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo obtener su ubicación. Tiempo de espera agotado.</p>';
+        // Aquí podrías detener cualquier spinner si no se detiene automáticamente.
+    }, 15000); // 15 segundos de timeout
+
+
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (pos) => {
+                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación se obtiene a tiempo
                 const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
                 new google.maps.Marker({
                     position: userPos,
@@ -347,11 +389,16 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
 
             },
             (error) => {
+                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación falla
                 console.warn("Error obteniendo ubicación del usuario:", error.message);
-                document.getElementById('info-ruta').innerHTML = `
-                    <h3>Cliente: ${nombreCliente}</h3>
-                    <p><strong>Dirección:</strong> ${direccion}</p>
-                    <p class="info">No se pudo obtener tu ubicación para calcular la ruta.</p>`;
+                let errorMsg = "Error al obtener tu ubicación: ";
+                switch(error.code) {
+                    case error.PERMISSION_DENIED: errorMsg += "Permiso denegado."; break;
+                    case error.POSITION_UNAVAILABLE: errorMsg += "Información de ubicación no disponible."; break;
+                    case error.TIMEOUT: errorMsg += "Tiempo de espera agotado."; break;
+                    default: errorMsg += "Error desconocido."; break;
+                }
+                document.getElementById('info-ruta').innerHTML = `<p class="error">${errorMsg} Asegúrate de haber concedido permisos de ubicación.</p>`;
             }, 
             { timeout: 10000, enableHighAccuracy: true }
         );
@@ -400,13 +447,13 @@ function cargarTodosLosClientes() {
                     clientesNoAsignados.forEach(cliente => {
                         const tr = document.createElement("tr");
                         tr.innerHTML = `
-                            <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td>
-                            <td>${cliente.nombre}</td>
+                            <td><input type="checkbox" class="client-checkbox" data-id="<span class="math-inline">\{cliente\.id\}"\></td\>
+<td\></span>{cliente.nombre}</td>
                             <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a>` : "-"}</td>
-                            <td>${cliente.direccion || "-"}</td>
-                            <td>${cliente.tarifa || "-"}</td>
-                            <td>${cliente.saldo_exigible || "-"}</td>
-                            <td>${cliente.saldo || "-"}</td>
+                            <td><span class="math-inline">\{cliente\.direccion \|\| "\-"\}</td\>
+<td\></span>{cliente.tarifa || "-"}</td>
+                            <td><span class="math-inline">\{cliente\.saldo\_exigible \|\| "\-"\}</td\>
+<td\></span>{cliente.saldo || "-"}</td>
                             <td>
                                 <select class="usuarioSelect" data-id="${cliente.id}">
                                     <option value="">-- Sin asignar --</option>
@@ -456,9 +503,17 @@ function inicializarMapaManual() {
 
     document.getElementById('info-ruta').innerHTML = '<p class="info">Obteniendo tu ubicación...</p>';
 
+    // Se establece un timeout para la geolocalización. Si el navegador no responde, se asume un fallo.
+    const geoTimeout = setTimeout(() => {
+        console.warn("Tiempo de espera agotado para la geolocalización. Verifique permisos o conexión.");
+        document.getElementById('info-ruta').innerHTML = '<p class="error">No se pudo obtener su ubicación. Tiempo de espera agotado.</p>';
+        // Aquí podrías detener cualquier spinner si no se detiene automáticamente.
+    }, 15000); // 15 segundos de timeout
+
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             async (pos) => {
+                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación se obtiene a tiempo
                 const userPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
 
                 directionsRendererInstance.setDirections({routes: []});
@@ -503,7 +558,7 @@ function inicializarMapaManual() {
                             const marker = new google.maps.Marker({
                                 position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
                                 map: mapInstance,
-                                title: `${cliente.nombre}\n${cliente.direccion || ''}`,
+                                title: `<span class="math-inline">\{cliente\.nombre\}\\n</span>{cliente.direccion || ''}`,
                                 icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png" // Clientes en rojo
                             });
                             marker.addListener('click', () => {
@@ -525,6 +580,7 @@ function inicializarMapaManual() {
                 }
             },
             (error) => {
+                clearTimeout(geoTimeout); // Limpiar el timeout si la ubicación falla
                 console.warn("Error al obtener ubicación del usuario:", error.message);
                 let errorMsg = "Error al obtener tu ubicación: ";
                 switch(error.code) {
@@ -685,7 +741,7 @@ function guardarAsignaciones() {
         body: JSON.stringify({ clientes: actualizaciones })
     })
     .then(res => {
-        if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
+        if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
         return res.json();
     })
     .then(data => {
@@ -778,7 +834,7 @@ async function asignarClientesMasivamente() {
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.mensaje || `Error HTTP ${res.status}`);
+            throw new Error(`Error HTTP ${res.status}`);
         }
 
         massAssignMessage.className = 'success';
@@ -793,18 +849,18 @@ async function asignarClientesMasivamente() {
         console.error("Error al asignar clientes masivamente:", error);
         massAssignMessage.className = 'error';
         massAssignMessage.textContent = `❌ Error al asignar clientes: ${error.message}`;
-    } finally {
+    }).finally(() => {
         assignButton.disabled = false;
         assignButton.textContent = '🚀 Asignar Clientes Seleccionados';
         setTimeout(() => massAssignMessage.textContent = '', 5000);
-    }
+    });
 }
 
 
 function cargarUsuarios() {
     fetch("/usuarios")
         .then(res => {
-            if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
+            if (!res.ok) throw new Error(`Error ${res.status}`);
             return res.json();
         })
         .then(usuarios => {
@@ -818,8 +874,8 @@ function cargarUsuarios() {
             usuarios.forEach(usuario => {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
-                    <td>${usuario.id}</td>
-                    <td>${usuario.nombre}</td>
+                    <td><span class="math-inline">\{usuario\.id\}</td\>
+<td\></span>{usuario.nombre}</td>
                     <td><button onclick="eliminarUsuario(${usuario.id})" class="btn-eliminar" style="background-color:#f44336;">🗑️ Eliminar</button></td>
                 `;
                 tbody.appendChild(tr);
@@ -857,7 +913,7 @@ function agregarUsuario() {
         body: JSON.stringify({ nombre, password })
     })
     .then(res => {
-        if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
+        if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
         return res.json();
     })
     .then(data => {
@@ -915,7 +971,7 @@ function eliminarUsuario(id) {
         body: JSON.stringify({ id })
     })
     .then(res => {
-        if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
+        if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
         return res.json();
     })
     .then(data => {
@@ -949,7 +1005,7 @@ function limpiarClientes() {
 
     fetch("/limpiar-clientes", { method: "POST" })
         .then(res => {
-            if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
+            if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
             return res.json();
         })
         .then(data => {
@@ -1082,7 +1138,7 @@ function procesarArchivo(event) {
                 body: JSON.stringify({ clientes: clientesExcel })
             })
             .then(res => {
-                if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
+                if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
                 return res.json();
             })
             .then(data => {
@@ -1091,372 +1147,4 @@ function procesarArchivo(event) {
                     if (data.clientesConCoordenadas > 0) {
                         msg += ` (${data.clientesConCoordenadas} geocodificados).`;
                     } else if (colDireccion) {
-                         msg += `. ${data.clientesConCoordenadas || 0} direcciones pudieron ser geocodificadas inicialmente.`;
-                    }
-                    mensajeExcel.textContent = msg;
-                    mensajeExcel.className = "success";
-                    excelFileInput.value = "";
-                    cargarTodosLosClientes();
-                    if (esAdmin) cargarKPIsConFecha();
-                } else {
-                    throw new Error(data.mensaje || "Error desconocido del servidor");
-                }
-            })
-            .catch(error => {
-                mensajeExcel.textContent = `❌ Error al cargar clientes: ${error.message}`;
-                mensajeExcel.className = "error";
-            }).finally(()=>{
-                 excelFileInput.disabled = false;
-            });
-        } catch (error) {
-            console.error("Error al procesar archivo Excel:", error);
-            mensajeExcel.textContent = "❌ Error crítico al leer el archivo Excel. Asegúrate que el formato es correcto.";
-            mensajeExcel.className = "error";
-            excelFileInput.disabled = false;
-            excelFileInput.value = "";
-        }
-    };
-    reader.readAsArrayBuffer(file);
-}
-
-function cargarReporte() {
-    const botonReporte = document.querySelector('button[onclick="cargarReporte()"]');
-    if(botonReporte){
-        botonReporte.disabled = true;
-        botonReporte.textContent = 'Cargando Reporte...';
-    }
-
-    fetch("/reporte")
-        .then(res => {
-            if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
-            return res.json();
-        })
-        .then(datos => {
-            const tbody = document.querySelector("#tablaReporte tbody");
-            tbody.innerHTML = "";
-            if (datos.length === 0) { 
-                tbody.innerHTML = `<tr><td colspan="9">No hay registros de llamadas para mostrar.</td></tr>`;
-                const msgEl = document.querySelector('.report-message');
-                if(msgEl) {
-                    msgEl.className = 'report-message info';
-                    msgEl.textContent = "No hay registros de llamadas para mostrar.";
-                    setTimeout(()=>msgEl.textContent = '', 3000);
-                }
-                return;
-            }
-                
-            datos.forEach(row => {
-                const tr = document.createElement("tr");
-                tr.innerHTML = `
-                    <td>${row.usuario || "-"}</td>
-                    <td>${row.cliente || "-"}</td>
-                    <td>${row.resultado || "-"}</td>
-                    <td>$${parseFloat(row.monto_cobrado || 0).toFixed(2)}</td>
-                    <td>${row.fecha ? new Date(row.fecha + 'T00:00:00').toLocaleDateString('es-MX', {timeZone: 'America/Mexico_City'}) : "-"}</td>
-                    <td>${row.observaciones || "-"}</td>
-                    <td>${row.tarifa || "-"}</td>
-                    <td>${row.saldo_exigible || "-"}</td>
-                    <td>${row.saldo || "-"}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-            const msgEl = document.querySelector('.report-message');
-            if(msgEl) msgEl.textContent = '';
-        })
-        .catch(error => {
-            console.error("Error al cargar reporte:", error);
-            document.querySelector("#tablaReporte tbody").innerHTML = `<tr><td colspan="9" class="error">Error al cargar el reporte: ${error.message}</td></tr>`;
-            const msgEl = document.querySelector('.report-message');
-            if(msgEl) {
-                msgEl.className = 'report-message error';
-                msgEl.textContent = `Error al cargar el reporte: ${error.message}`;
-            }
-        }).finally(()=>{
-            if(botonReporte){
-                botonReporte.disabled = false;
-                botonReporte.textContent = '🔄 Mostrar Todos los Registros';
-            }
-        });
-}
-
-function exportarReporte() {
-    const botonExportar = document.querySelector('button[onclick="exportarReporte()"]');
-     if(botonExportar){
-        botonExportar.disabled = true;
-        botonExportar.textContent = 'Exportando...';
-    }
-
-    fetch("/reporte")
-        .then(res => {
-            if(!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
-            return res.json();
-        })
-        .then(datos => {
-            if (datos.length === 0) {
-                const tablaReporte = document.getElementById('tablaReporte');
-                let msgEl = tablaReporte.querySelector('.report-message');
-                if(!msgEl){
-                    msgEl = document.createElement('p');
-                    msgEl.className = 'report-message info';
-                    tablaReporte.parentNode.insertBefore(msgEl, tablaReporte);
-                }
-                msgEl.textContent = "No hay datos para exportar.";
-                setTimeout(()=>msgEl.textContent = '', 3000);
-                return;
-            }
-            const datosMapeados = datos.map(d => ({
-                "Usuario": d.usuario,
-                "Cliente": d.cliente,
-                "Resultado Llamada": d.resultado,
-                "Monto Cobrado": parseFloat(d.monto_cobrado || 0),
-                "Fecha": d.fecha ? new Date(d.fecha + 'T00:00:00').toLocaleDateString('es-MX', {timeZone: 'America/Mexico_City'}) : "",
-                "Observaciones": d.observaciones,
-                "Tarifa Cliente": d.tarifa,
-                "Saldo Exigible Cliente": d.saldo_exigible,
-                "Saldo Cliente": d.saldo
-            }));
-            
-            const ws = XLSX.utils.json_to_sheet(datosMapeados);
-            const colWidths = Object.keys(datosMapeados[0]).map(key => ({ wch: Math.max(20, key.length + 2) }));
-            ws['!cols'] = colWidths;
-
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, "ReporteLlamadas");
-            XLSX.writeFile(wb, `Reporte_Llamadas_${new Date().toISOString().split('T')[0]}.xlsx`);
-        })
-        .catch(error => {
-            console.error("Error al generar datos para exportar:", error);
-            const tablaReporte = document.getElementById('tablaReporte');
-            let msgEl = tablaReporte.querySelector('.report-message');
-            if(!msgEl){
-                msgEl = document.createElement('p');
-                msgEl.className = 'report-message error';
-                tablaReporte.parentNode.insertBefore(msgEl, tablaReporte);
-            }
-            msgEl.textContent = `Error al exportar: ${error.message}`;
-        }).finally(()=>{
-            if(botonExportar){
-                botonExportar.disabled = false;
-                botonExportar.textContent = '📄 Exportar a Excel';
-            }
-        });
-}
-
-function filtrarClientes() {
-    const filtro = document.getElementById('filtroCliente').value.toLowerCase();
-    const filas = document.querySelectorAll("#tablaAsignarClientes tbody tr");
-    filas.forEach(fila => {
-        if (fila.querySelector('td[colspan="8"]')) {
-            fila.style.display = "";
-            return;
-        }
-        const nombreCliente = fila.cells[1].textContent.toLowerCase();
-        const telefonoCliente = fila.cells[2].textContent.toLowerCase();
-        const direccionCliente = fila.cells[3].textContent.toLowerCase();
-        if (nombreCliente.includes(filtro) || telefonoCliente.includes(filtro) || direccionCliente.includes(filtro)) {
-            fila.style.display = "";
-        } else {
-            fila.style.display = "none";
-        }
-    });
-}
-
-function solicitarYEnviarUbicacion() {
-    if (!usuarioActual || esAdmin) {
-        return;
-    }
-
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const lat = position.coords.latitude;
-                const lng = position.coords.longitude;
-                console.log(`Ubicación del gestor ${usuarioActual.usuario}: ${lat}, ${lng}`);
-                
-                fetch('/actualizar-ubicacion-usuario', {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId: usuarioActual.id, lat, lng })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.status === "ok") {
-                        console.log("Ubicación del gestor actualizada en el servidor.");
-                    } else {
-                        console.warn("Error al enviar ubicación del gestor:", data.mensaje);
-                    }
-                })
-                .catch(error => {
-                    console.error("Error de red al enviar ubicación del gestor:", error);
-                });
-            },
-            (error) => {
-                console.warn("No se pudo obtener la ubicación del gestor:", error.message);
-            },
-            {
-                enableHighAccuracy: false,
-                timeout: 10000,
-                maximumAge: 300000
-            }
-        );
-    } else {
-        console.warn("Geolocalización no soportada por este navegador para el gestor.");
-    }
-}
-
-async function cargarYMostrarGestoresEnMapa() {
-    if (!esAdmin || !mapInstance) return;
-
-    gestoresMarkers.forEach(marker => marker.setMap(null));
-    gestoresMarkers = [];
-
-    try {
-        const response = await fetch('/ubicaciones-gestores');
-        if (!response.ok) throw new Error('Error al obtener ubicaciones de gestores.');
-        const gestores = await response.json();
-
-        gestores.forEach(gestor => {
-            if (gestor.lat && gestor.lng) {
-                const marker = new google.maps.Marker({
-                    position: { lat: parseFloat(gestor.lat), lng: parseFloat(gestor.lng) },
-                    map: mapInstance,
-                    title: `Gestor: ${gestor.nombre}\nÚltima ubicación: ${gestor.ultima_actualizacion ? new Date(gestor.ultima_actualizacion).toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }) : 'N/A'}`,
-                    icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png" // Icono verde para gestores
-                });
-                gestoresMarkers.push(marker);
-            }
-        });
-        console.log(`Mostrando ${gestores.length} ubicaciones de gestores.`);
-
-    } catch (error) {
-        console.error("Error al cargar ubicaciones de gestores para admin:", error);
-    }
-}
-
-// Modificada para aceptar un parámetro de fecha de inicio
-async function cargarKPIs(fechaInicio = null) {
-    if (!esAdmin) return;
-
-    let url = '/kpis';
-    if (fechaInicio) {
-        url += `?fechaInicio=${fechaInicio}`;
-    }
-
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('Error al obtener los KPIs');
-        const kpis = await response.json();
-
-        // KPIs Generales
-        document.getElementById('kpiClientesTotales').textContent = kpis.clientesTotales;
-        document.getElementById('kpiClientesAsignados').textContent = kpis.clientesAsignados;
-        document.getElementById('kpiClientesPendientes').textContent = kpis.clientesPendientesAsignar;
-        document.getElementById('kpiLlamadasTotales').textContent = kpis.llamadasTotales;
-        document.getElementById('kpiMontoCobrado').textContent = `$${kpis.montoTotalCobrado}`;
-        document.getElementById('kpiEfectividadLlamadas').textContent = `${kpis.efectividadLlamadas}%`;
-        document.getElementById('kpiClientesProcesadosHoy').textContent = kpis.clientesProcesadosHoy;
-
-        // KPIs de Riesgo
-        document.getElementById('kpiRiesgoVerde').textContent = kpis.riesgoClientes.verde;
-        document.getElementById('kpiRiesgoAmarillo').textContent = kpis.riesgoClientes.amarillo;
-        document.getElementById('kpiRiesgoRojo').textContent = kpis.riesgoClientes.rojo;
-        document.getElementById('kpiMontoRiesgoAlto').textContent = `$${kpis.riesgoClientes.montoRiesgoAlto.toFixed(2)}`;
-
-        // Rendimiento de Gestores y Bonos
-        const tbodyRendimientoGestores = document.querySelector("#tablaRendimientoGestores tbody");
-        tbodyRendimientoGestores.innerHTML = "";
-
-        if (kpis.rendimientoGestores.length === 0) {
-            tbodyRendimientoGestores.innerHTML = `<tr><td colspan="10">No hay datos de rendimiento de gestores.</td></tr>`;
-        } else {
-            kpis.rendimientoGestores.forEach(gestor => {
-                const tr = document.createElement("tr");
-                let trendClass = '';
-                if (gestor.trendStatus === 'verde') {
-                    trendClass = 'trend-green';
-                } else if (gestor.trendStatus === 'amarillo') {
-                    trendClass = 'trend-yellow';
-                } else if (gestor.trendStatus === 'rojo') {
-                    trendClass = 'trend-red';
-                }
-
-                tr.className = trendClass;
-
-                tr.innerHTML = `
-                    <td>${gestor.nombre}</td>
-                    <td>$${gestor.montoCobrado}</td>
-                    <td>${gestor.efectividad}%</td>
-                    <td>${gestor.totalLlamadas}</td>
-                    <td>$${gestor.salarioBaseGanado}</td>
-                    <td>$${gestor.porcentajeBonoGanado}</td>
-                    <td>${gestor.proximoNivelTarget !== null ? `$${gestor.proximoNivelTarget}` : 'N/A'}</td>
-                    <td>${gestor.proximoNivelPorcentaje !== null ? `${gestor.proximoNivelPorcentaje}%` : 'N/A'}</td>
-                    <td>$${gestor.projectedAmount}</td>
-                    <td>
-                        <span class="trend-indicator trend-${gestor.trendStatus}">
-                            ${gestor.trendStatus === 'verde' ? '⬆️ Excelente' : 
-                               gestor.trendStatus === 'amarillo' ? '➡️ En Curso' : 
-                               '⬇️ Bajo Objetivo'}
-                        </span>
-                    </td>
-                `;
-                tbodyRendimientoGestores.appendChild(tr);
-            });
-        }
-
-        console.log("KPIs de gestores cargados exitosamente.");
-
-    } catch (error) {
-        console.error("Error al cargar los KPIs:", error);
-        document.getElementById('kpiClientesTotales').textContent = 'Error';
-        document.getElementById('kpiClientesAsignados').textContent = 'Error';
-        document.getElementById('kpiClientesPendientes').textContent = 'Error';
-        document.getElementById('kpiLlamadasTotales').textContent = 'Error';
-        document.getElementById('kpiMontoCobrado').textContent = 'Error';
-        document.getElementById('kpiEfectividadLlamadas').textContent = 'Error';
-        document.getElementById('kpiClientesProcesadosHoy').textContent = 'Error';
-        document.getElementById('kpiRiesgoVerde').textContent = 'Error';
-        document.getElementById('kpiRiesgoAmarillo').textContent = 'Error';
-        document.getElementById('kpiRiesgoRojo').textContent = 'Error';
-        document.getElementById('kpiMontoRiesgoAlto').textContent = 'Error';
-        document.querySelector("#tablaRendimientoGestores tbody").innerHTML = `<tr><td colspan="10" class="error">Error al cargar el rendimiento de gestores.</td></tr>`;
-    }
-}
-
-function cargarKPIsConFecha() {
-    const fechaInicio = document.getElementById('fechaInicioBonos').value;
-    cargarKPIs(fechaInicio);
-}
-
-// Nueva función para abrir Google Maps desde las coordenadas
-function abrirEnGoogleMaps(lat, lng, direccion) {
-    // Usar la URL de Google Maps para buscar un lugar por coordenadas.
-    // 'query' es preferible para buscar un punto específico.
-    const googleMapsUrl = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-    window.open(googleMapsUrl, '_blank');
-}
-
-
-window.login = login;
-window.cerrarSesion = cerrarSesion;
-window.procesarArchivo = procesarArchivo;
-window.guardarAsignaciones = guardarAsignaciones;
-window.cargarReporte = cargarReporte;
-window.exportarReporte = exportarReporte;
-window.agregarUsuario = agregarUsuario;
-window.limpiarClientes = limpiarClientes;
-window.eliminarUsuario = eliminarUsuario;
-window.registrarLlamada = registrarLlamada;
-window.inicializarMapaManual = inicializarMapaManual;
-window.geocodificarCliente = geocodificarCliente;
-window.mostrarClienteEnMapa = mostrarClienteEnMapa; // Hacerla global
-window.mostrarRuta = mostrarRuta; // ¡Asegurarnos de que también sea global!
-window.filtrarClientes = filtrarClientes;
-window.enviarWhatsapp = enviarWhatsapp;
-window.toggleAllClients = toggleAllClients;
-window.asignarClientesMasivamente = asignarClientesMasivamente;
-window.solicitarYEnviarUbicacion = solicitarYEnviarUbicacion;
-window.cargarYMostrarGestoresEnMapa = cargarYMostrarGestoresEnMapa;
-window.cargarKPIs = cargarKPIs;
-window.cargarKPIsConFecha = cargarKPIsConFecha;
-window.abrirEnGoogleMaps = abrirEnGoogleMaps; // Hacerla global
+                         msg += `. ${data.clientesConCoordenadas || 0} direcciones pudieron ser geocodificadas inicialmente.
