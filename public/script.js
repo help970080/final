@@ -122,7 +122,7 @@ window.addEventListener("load", () => {
         const dd = String(firstDayOfMonth.getDate()).padStart(2, '0');
         const fechaInicioBonosInput = document.getElementById('fechaInicioBonos');
         if (fechaInicioBonosInput) {
-            fechaInicioBonosInput.value = `<span class="math-inline">\{yyyy\}\-</span>{mm}-${dd}`;
+            fechaInicioBonosInput.value = `${yyyy}-${mm}-${dd}`;
         }
 
 
@@ -162,33 +162,33 @@ function cargarClientes(usuarioId) {
             clientes.forEach(cliente => {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
-                    <td><span class="math-inline">\{cliente\.nombre\}</td\>
-<td\></span>{cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a> <button onclick="enviarWhatsapp('${cliente.telefono}', '${cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
-                    <td><span class="math-inline">\{cliente\.direccion \|\| "\-"\}
-<button onclick\="geocodificarCliente\(</span>{cliente.id}, this)" class="btn-geo">
+                    <td>${cliente.nombre}</td>
+                    <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a> <button onclick="enviarWhatsapp('${cliente.telefono}', '${cliente.nombre}')" class="btn-whatsapp">💬 WhatsApp</button>` : "-"}</td>
+                    <td>${cliente.direccion || "-"}
+                      <button onclick="geocodificarCliente(${cliente.id}, this)" class="btn-geo">
                         🌍 Geolocalizar
                       </button>
                       <span id="geo-status-${cliente.id}" class="geo-status">
                         ${cliente.lat && cliente.lng ? 
-                            // CORRECCIÓN AQUÍ: Asegura que la clase del botón esté correctamente cerrada.
-                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${CSS.escape(cliente.direccion)}')**"** class="btn-map-shortcut">Ver en Mapa</button>` 
+                            // CORRECCIÓN FINAL EN ESTA LÍNEA
+                            `✓ Ubicada <button onclick="abrirEnGoogleMaps(${cliente.lat}, ${cliente.lng}, '${CSS.escape(cliente.direccion)}')"` + ` class="btn-map-shortcut">Ver en Mapa</button>` 
                             : ''}
                       </span>
                     </td>
-                    <td><span class="math-inline">\{cliente\.tarifa \|\| "\-"\}</td\>
-<td\></span>{cliente.saldo_exigible || "-"}</td>
-                    <td><span class="math-inline">\{cliente\.saldo \|\| "\-"\}</td\>
-<td\><input type\="number" class\="monto" data\-id\="</span>{cliente.id}" /></td>
+                    <td>${cliente.tarifa || "-"}</td>
+                    <td>${cliente.saldo_exigible || "-"}</td>
+                    <td>${cliente.saldo || "-"}</td>
+                    <td><input type="number" class="monto" data-id="${cliente.id}" /></td>
                     <td>
-                        <select class="resultado" data-id="<span class="math-inline">\{cliente\.id\}"\>
-<option value\=""\>Selecciona</option\>
-<option value\="Éxito"\>Éxito</option\>
-<option value\="En proceso"\>En proceso</option\>
-<option value\="No contestó"\>No contestó</option\>
-<option value\="Rechazado"\>Rechazado</option\>
-</select\>
-</td\>
-<td\><input type\="text" class\="observaciones" data\-id\="</span>{cliente.id}" /></td>
+                        <select class="resultado" data-id="${cliente.id}">
+                            <option value="">Selecciona</option>
+                            <option value="Éxito">Éxito</option>
+                            <option value="En proceso">En proceso</option>
+                            <option value="No contestó">No contestó</option>
+                            <option value="Rechazado">Rechazado</option>
+                        </select>
+                    </td>
+                    <td><input type="text" class="observaciones" data-id="${cliente.id}" /></td>
                     <td><button onclick="registrarLlamada(this, ${cliente.id})">Registrar</button></td>
                 `;
                 tbody.appendChild(tr);
@@ -221,7 +221,7 @@ function enviarWhatsapp(telefono, nombreCliente) {
 
     const mensaje = encodeURIComponent(`Hola ${nombreCliente},\nLe escribo de su compañía de gestión de cobranza. Me gustaría hablar sobre su saldo pendiente y las opciones de pago disponibles. ¿Podría indicarnos un buen momento para contactarle?\n\nGracias.`);
     
-    const whatsappUrl = `https://wa.me/<span class="math-inline">\{numeroLimpio\}?text\=</span>{mensaje}`;
+    const whatsappUrl = `https://wa.me/${numeroLimpio}?text=${mensaje}`;
     window.open(whatsappUrl, '_blank');
 }
 
@@ -255,10 +255,10 @@ async function geocodificarCliente(clienteId, boton) {
         const data = await response.json();
 
         if (data.status === "ok") {
-            // CORRECCIÓN AQUÍ: Asegura que la clase del botón esté correctamente cerrada.
+            // CORRECCIÓN FINAL EN ESTA LÍNEA
             statusElement.innerHTML = `
                 <span class="geo-status geo-success">✓ Ubicada</span>
-                <button onclick="abrirEnGoogleMaps(${data.lat}, <span class="math-inline">\{data\.lng\}, '</span>{CSS.escape(data.direccion_formateada || direccion)}')**"** class="btn-map-shortcut">Ver en Mapa</button>
+                <button onclick="abrirEnGoogleMaps(${data.lat}, ${data.lng}, '${CSS.escape(data.direccion_formateada || direccion)}')"` + ` class="btn-map-shortcut">Ver en Mapa</button>
             `;
             botonGeo.innerHTML = '🌍 Ubicada';
             botonGeo.style.backgroundColor = '#4CAF50';
@@ -312,11 +312,11 @@ function mostrarRuta(map, directionsRenderer, origen, cliente) {
             const leg = route.legs[0];
             let instructionsHTML = '<h4>Indicaciones detalladas:</h4><ol style="padding-left: 20px; max-height: 200px; overflow-y: auto;">';
             leg.steps.forEach(step => {
-                instructionsHTML += `<li style="margin-bottom: 5px;"><span class="math-inline">\{step\.instructions\} <span style\="font\-size\:0\.9em; color\:\#555;"\>\(</span>{step.distance.text}, ${step.duration.text})</span></li>`;
+                instructionsHTML += `<li style="margin-bottom: 5px;">${step.instructions} <span style="font-size:0.9em; color:#555;">(${step.distance.text}, ${step.duration.text})</span></li>`;
             });
             instructionsHTML += '</ol>';
 
-            const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=<span class="math-inline">\{origen\.lat\},</span>{origen.lng}&destination=<span class="math-inline">\{destino\.lat\},</span>{destino.lng}&travelmode=driving`;
+            const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origen.lat},${origen.lng}&destination=${destino.lat},${destino.lng}&travelmode=driving`;
             const navigationLink = `<a href="${googleMapsUrl}" target="_blank" class="btn-navegar" style="display:inline-block; margin-top:15px; padding:10px 18px; background-color:#28a745; color:white; text-decoration:none; border-radius:5px; font-weight:bold;">🗺️ Abrir en Google Maps</a>`;
 
             document.getElementById('info-ruta').innerHTML = `
@@ -441,13 +441,13 @@ function cargarTodosLosClientes() {
                     clientesNoAsignados.forEach(cliente => {
                         const tr = document.createElement("tr");
                         tr.innerHTML = `
-                            <td><input type="checkbox" class="client-checkbox" data-id="<span class="math-inline">\{cliente\.id\}"\></td\>
-<td\></span>{cliente.nombre}</td>
+                            <td><input type="checkbox" class="client-checkbox" data-id="${cliente.id}"></td>
+                            <td>${cliente.nombre}</td>
                             <td>${cliente.telefono ? `<a href="tel:${cliente.telefono}" class="telefono-link">${cliente.telefono}</a>` : "-"}</td>
-                            <td><span class="math-inline">\{cliente\.direccion \|\| "\-"\}</td\>
-<td\></span>{cliente.tarifa || "-"}</td>
-                            <td><span class="math-inline">\{cliente\.saldo\_exigible \|\| "\-"\}</td\>
-<td\></span>{cliente.saldo || "-"}</td>
+                            <td>${cliente.direccion || "-"}</td>
+                            <td>${cliente.tarifa || "-"}</td>
+                            <td>${cliente.saldo_exigible || "-"}</td>
+                            <td>${cliente.saldo || "-"}</td>
                             <td>
                                 <select class="usuarioSelect" data-id="${cliente.id}">
                                     <option value="">-- Sin asignar --</option>
@@ -550,7 +550,7 @@ function inicializarMapaManual() {
                             const marker = new google.maps.Marker({
                                 position: { lat: parseFloat(cliente.lat), lng: parseFloat(cliente.lng) },
                                 map: mapInstance,
-                                title: `<span class="math-inline">\{cliente\.nombre\}\\n</span>{cliente.direccion || ''}`,
+                                title: `${cliente.nombre}\n${cliente.direccion || ''}`,
                                 icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png" // Clientes en rojo
                             });
                             marker.addListener('click', () => {
@@ -866,8 +866,8 @@ function cargarUsuarios() {
             usuarios.forEach(usuario => {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `
-                    <td><span class="math-inline">\{usuario\.id\}</td\>
-<td\></span>{usuario.nombre}</td>
+                    <td>${usuario.id}</td>
+                    <td>${usuario.nombre}</td>
                     <td><button onclick="eliminarUsuario(${usuario.id})" class="btn-eliminar" style="background-color:#f44336;">🗑️ Eliminar</button></td>
                 `;
                 tbody.appendChild(tr);
@@ -875,41 +875,4 @@ function cargarUsuarios() {
         })
         .catch(error => {
             console.error("Error al cargar usuarios:", error);
-            document.querySelector("#tablaUsuarios tbody").innerHTML = `<tr><td colspan="3" class="error">Error al cargar usuarios: ${error.message}</td></tr>`;
-        });
-}
-
-function agregarUsuario() {
-    const nombreInput = document.getElementById("nuevoUsuarioNombre");
-    const passwordInput = document.getElementById("nuevoUsuarioPassword");
-    const nombre = nombreInput.value.trim();
-    const password = passwordInput.value.trim();
-
-    const botonAgregar = document.querySelector('button[onclick="agregarUsuario()"]');
-
-    if (!nombre || !password) {
-        const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
-        msgEl.className = 'admin-message error';
-        msgEl.textContent = "❌ Nombre y contraseña son obligatorios.";
-        return;
-    }
-    
-    if(botonAgregar) {
-        botonAgregar.disabled = true;
-        botonAgregar.textContent = 'Agregando...';
-    }
-
-    fetch("/usuarios", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nombre, password })
-    })
-    .then(res => {
-        if (!res.ok) return res.json().then(err => { throw new Error(err.mensaje || `Error HTTP ${res.status}`) });
-        return res.json();
-    })
-    .then(data => {
-        if (data.status === "ok") {
-            const msgEl = obtenerMensajeAdmin("seccionAdmin", ".admin-message");
-            msgEl.className = 'admin-message success';
-            msgEl.textContent = `✅ Usuario "${data.usuario.nombre}" creado exitosamente.`
+            document.querySelector("#tablaUsuarios tbody").innerHTML = `<tr><td colspan="3" class="error">Error al cargar usuarios: ${error.message}`.
