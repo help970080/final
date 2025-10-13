@@ -1,4 +1,4 @@
-// public/script.js (multi-tenant listo + Render + superadmin elige empresa)
+// public/script.js (multi-tenant listo + Render + superadmin elige empresa + Excel)
 let usuarioActual = null;
 let esAdmin = false;          // admin de empresa
 let esSuperadmin = false;     // superadmin global
@@ -10,10 +10,13 @@ let gestoresMarkers = [];
 
 window.Maps_API_KEY = null;
 
-/* ========== Google Maps con API key ========== */
+/* =========================================
+   Google Maps con API key (carga robusta)
+   ========================================= */
 async function ensureGoogleMapsKey() {
   if (window.google && window.google.maps) return true;
   try {
+    // Pide la API key al backend
     if (!window.Maps_API_KEY) {
       const res = await fetch('/api-key');
       if (!res.ok) throw new Error('No API key configurada en el backend');
@@ -21,8 +24,10 @@ async function ensureGoogleMapsKey() {
       if (!data?.key) throw new Error('Respuesta /api-key inválida');
       window.Maps_API_KEY = data.key;
     }
+    // Si hay un script de Maps sin key, elimínalo
     const old = Array.from(document.scripts).find(s => s.src.includes('maps.googleapis.com/maps/api/js'));
     if (old && !old.src.includes('key=')) { try { old.parentNode.removeChild(old); } catch(_){} }
+    // Inyecta el script con key si aún no está cargado
     if (!(window.google && window.google.maps)) {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
@@ -45,7 +50,9 @@ function inicializarMapa() {
   }
 }
 
-/* ========== Auth & Headers ========== */
+/* =========================================
+   Auth & Headers
+   ========================================= */
 function withAuthHeaders(init = {}) {
   const u = JSON.parse(localStorage.getItem("user"));
   const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
@@ -95,7 +102,9 @@ function mostrarMensajeFlotante(mensaje) {
   setTimeout(() => el.classList.add('hidden'), 3000);
 }
 
-/* ========== Boot ========== */
+/* =========================================
+   Boot
+   ========================================= */
 window.addEventListener("load", async () => {
   const userData = JSON.parse(localStorage.getItem("user"));
   if (!userData && window.location.pathname.includes("clientes.html")) {
@@ -121,13 +130,12 @@ window.addEventListener("load", async () => {
       inputFecha.value = `${firstDay.getFullYear()}-${String(firstDay.getMonth()+1).padStart(2,'0')}-${String(firstDay.getDate()).padStart(2,'0')}`;
     }
 
-    // SUPERADMIN: mostrar módulo + selector de empresa
+    // SUPERADMIN: muestra módulo y selector de empresa
     if (esSuperadmin) {
       document.getElementById("seccionEmpresas")?.classList.remove("hidden");
-      poblarSelectorEmpresas(); // llena el combo para entrar como empresa
+      poblarSelectorEmpresas();
     }
 
-    // Si superadmin elige empresa activa -> mostrar paneles de admin
     const actingAsEmpresa = (esSuperadmin && !!empresaActivaId);
     if (esAdmin || actingAsEmpresa) {
       document.getElementById("seccionAdmin")?.classList.remove("hidden");
@@ -143,19 +151,20 @@ window.addEventListener("load", async () => {
       solicitarYEnviarUbicacion();
       setInterval(solicitarYEnviarUbicacion, 30 * 60 * 1000);
     } else {
-      // Superadmin sin empresa activa: oculta admin/asignación
+      // Superadmin sin empresa activa
       document.getElementById("seccionAdmin")?.classList.add("hidden");
       document.getElementById("seccionAsignacion")?.classList.add("hidden");
     }
   }
 });
 
-/* ========== Superadmin: selector empresa activa ========== */
+/* =========================================
+   Superadmin: seleccionar empresa activa
+   ========================================= */
 function poblarSelectorEmpresas() {
   const select = document.getElementById('empresaActivaSelect');
   const msg = document.getElementById('empresaActivaMsg');
   if (!select) return;
-  // Carga lista (requiere x-user-id: 0)
   fetch('/empresas', withAuthHeaders())
     .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
     .then(empresas => {
@@ -185,7 +194,6 @@ function activarEmpresaParaSuperadmin() {
   localStorage.setItem("empresaActivaId", val);
   empresaActivaId = val;
   if (msg) { msg.className='success'; msg.textContent=`Ahora administras la empresa #${val}`; }
-  // recarga para que aparezcan secciones de admin
   location.reload();
 }
 
@@ -197,7 +205,9 @@ function salirDeEmpresaActiva() {
   location.reload();
 }
 
-/* ========== Gestor: clientes asignados ========== */
+/* =========================================
+   Gestor: clientes asignados (tabla principal)
+   ========================================= */
 function cargarClientes(usuarioId) {
   fetch(`/clientes/${usuarioId}`, withAuthHeaders())
     .then(res => { if (!res.ok) throw new Error(`Error ${res.status}`); return res.json(); })
@@ -295,7 +305,9 @@ function abrirEnGoogleMaps(lat, lng) {
   window.open(`http://maps.google.com/maps?daddr=${lat},${lng}&dirflg=d`, '_blank');
 }
 
-/* ========== Admin: listar/asignar clientes ========== */
+/* =========================================
+   Admin: listar/asignar clientes
+   ========================================= */
 function cargarTodosLosClientes() {
   fetch("/clientes", withAuthHeaders())
     .then(res => { if (!res.ok) throw new Error(`Error ${res.status}`); return res.json(); })
@@ -416,7 +428,9 @@ async function asignarClientesMasivamente() {
   }
 }
 
-/* ========== Usuarios (Admin) ========== */
+/* =========================================
+   Usuarios (Admin)
+   ========================================= */
 function cargarUsuarios() {
   fetch("/usuarios", withAuthHeaders())
     .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
@@ -461,7 +475,9 @@ function eliminarUsuario(id) {
     .catch(err => console.error("Error eliminar usuario:", err));
 }
 
-/* ========== Llamadas (Gestor) ========== */
+/* =========================================
+   Llamadas (Gestor)
+   ========================================= */
 function registrarLlamada(btn, clienteId) {
   const fila = btn.closest("tr");
   const montoInput = fila.querySelector(".monto");
@@ -514,7 +530,9 @@ function registrarLlamada(btn, clienteId) {
     });
 }
 
-/* ========== Mapa ========== */
+/* =========================================
+   Mapas
+   ========================================= */
 function inicializarMapaManual() {
   if (typeof google === 'undefined' || typeof google.maps === 'undefined') {
     const info = document.getElementById('info-ruta');
@@ -630,7 +648,9 @@ function mostrarClienteEnMapa(map, lat, lng, direccion, nombreCliente) {
   }
 }
 
-/* ========== Ubicación (ping) ========== */
+/* =========================================
+   Ubicación (ping periódico)
+   ========================================= */
 function solicitarYEnviarUbicacion() {
   if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(pos => {
@@ -647,7 +667,9 @@ function cerrarSesion() {
   window.location.href = "/";
 }
 
-/* ========== Superadmin: alta y listado empresas ========== */
+/* =========================================
+   Superadmin: alta y listado de empresas
+   ========================================= */
 function crearEmpresa() {
   const nombre = document.getElementById('empresaNombre')?.value;
   const admin_nombre = document.getElementById('empresaAdminNombre')?.value;
@@ -682,4 +704,137 @@ function listarEmpresas() {
       if (msg) msg.textContent = empresas.length ? '' : 'No hay empresas registradas.';
     })
     .catch(e => { if (msg) { msg.className='error'; msg.textContent=e.message; } });
+}
+
+/* =========================================
+   Carga de clientes desde Excel (Admin / Superadmin actuando como empresa)
+   ========================================= */
+// Normaliza nombre de encabezados (sin acentos, minúsculas)
+function _norm(s) {
+  if (!s) return '';
+  return String(s)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().trim();
+}
+
+// Intenta encontrar un valor en una fila con múltiples claves posibles
+function _pick(row, keys) {
+  for (const k of keys) {
+    if (row.hasOwnProperty(k) && row[k] != null && String(row[k]).trim() !== '') return row[k];
+  }
+  // probar por equivalencia normalizada
+  const normMap = {};
+  Object.keys(row).forEach(h => normMap[_norm(h)] = row[h]);
+  for (const k of keys) {
+    const nk = _norm(k);
+    if (normMap.hasOwnProperty(nk) && normMap[nk] != null && String(normMap[nk]).trim() !== '') return normMap[nk];
+  }
+  return '';
+}
+
+async function procesarArchivo(event) {
+  const file = event.target.files?.[0];
+  const msg = document.getElementById('mensajeExcel');
+  if (!file) { if (msg) { msg.className = 'info'; msg.textContent = 'Selecciona un archivo .xlsx'; } return; }
+
+  try {
+    if (msg) { msg.className = 'info'; msg.textContent = 'Leyendo archivo…'; }
+
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data, { type: 'array' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+
+    if (!Array.isArray(json) || json.length === 0) {
+      if (msg) { msg.className = 'error'; msg.textContent = 'La hoja está vacía o no se pudo leer.'; }
+      return;
+    }
+
+    // Mapeo de columnas esperadas (admite variaciones de encabezado)
+    const clientes = json.map(r => {
+      const nombre = _pick(r, ['Nombre', 'Cliente', 'name', 'cliente']);
+      const telefono = _pick(r, ['Telefono', 'Teléfono', 'Phone', 'Celular', 'Movil', 'Móvil']);
+      const direccion = _pick(r, ['Direccion', 'Dirección', 'Domicilio', 'Address']);
+      const tarifa = _pick(r, ['Tarifa', 'Plan', 'Paquete']);
+      const saldo_exigible = _pick(r, ['Saldo Exigible', 'Saldo_Exigible', 'SaldoExigible', 'Exigible']);
+      const saldo = _pick(r, ['Saldo', 'Adeudo', 'Deuda']);
+      const asignado_a = _pick(r, ['AsignadoA', 'Asignado_a', 'UsuarioId', 'GestorId', 'ID Gestor']);
+
+      return {
+        nombre: String(nombre || '').trim(),
+        telefono: String(telefono || '').trim(),
+        direccion: String(direccion || '').trim(),
+        tarifa: String(tarifa || '').trim(),
+        saldo_exigible: String(saldo_exigible || '').trim(),
+        saldo: String(saldo || '').trim(),
+        asignado_a: /^\d+$/.test(String(asignado_a).trim()) ? parseInt(String(asignado_a).trim(), 10) : null,
+      };
+    }).filter(c => c.nombre);
+
+    if (clientes.length === 0) {
+      if (msg) { msg.className = 'error'; msg.textContent = 'No se encontraron filas válidas (verifica encabezados y datos).'; }
+      return;
+    }
+
+    if (msg) { msg.className = 'info'; msg.textContent = `Procesando ${clientes.length} clientes…`; }
+
+    // Enviar al backend (con x-user-id y x-empresa-id si aplica)
+    const res = await fetch('/cargar-clientes', withAuthHeaders({
+      method: 'POST',
+      body: JSON.stringify({ clientes })
+    }));
+
+    const dataRes = await res.json();
+    if (!res.ok || dataRes.status !== 'ok') {
+      const detalle = dataRes?.mensaje || `HTTP ${res.status}`;
+      if (msg) { msg.className = 'error'; msg.textContent = `❌ Error al cargar: ${detalle}`; }
+      return;
+    }
+
+    if (msg) { msg.className = 'success'; msg.textContent = `✅ ${dataRes.mensaje}. Con coordenadas: ${dataRes.clientesConCoordenadas || 0}.`; }
+
+    // refresca tablas
+    if (esAdmin || esSuperadmin) {
+      cargarTodosLosClientes();
+      if (typeof cargarKPIsConFecha === 'function') cargarKPIsConFecha();
+    }
+  } catch (e) {
+    console.error('Error procesarArchivo:', e);
+    if (msg) { msg.className = 'error'; msg.textContent = `❌ ${e.message}`; }
+  }
+}
+
+async function limpiarClientes() {
+  const msg = document.getElementById('mensajeExcel');
+  if (!confirm('¿Seguro que deseas eliminar TODOS los clientes de esta empresa?')) return;
+  try {
+    const res = await fetch('/limpiar-clientes', withAuthHeaders({ method: 'POST' }));
+    const data = await res.json();
+    if (res.ok && data.status === 'ok') {
+      if (msg) { msg.className = 'success'; msg.textContent = `✅ ${data.mensaje}`; }
+      cargarTodosLosClientes();
+    } else {
+      if (msg) { msg.className = 'error'; msg.textContent = `❌ ${data.mensaje || 'Error al limpiar'}`; }
+    }
+  } catch (e) {
+    if (msg) { msg.className = 'error'; msg.textContent = `❌ ${e.message}`; }
+  }
+}
+
+/* =========================================
+   Utilidades de asignación
+   ========================================= */
+function filtrarClientes() {
+  const filtro = (document.getElementById('filtroCliente')?.value || '').toLowerCase();
+  const rows = document.querySelectorAll('#tablaAsignarClientes tbody tr');
+  rows.forEach(tr => {
+    const texto = tr.textContent.toLowerCase();
+    tr.style.display = texto.includes(filtro) ? '' : 'none';
+  });
+}
+
+function toggleAllClients(checkbox) {
+  const checks = document.querySelectorAll('#tablaAsignarClientes .client-checkbox');
+  checks.forEach(ch => ch.checked = checkbox.checked);
 }
