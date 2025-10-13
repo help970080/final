@@ -1,5 +1,6 @@
 /* =========================================================
    public/script.js — multi-empresa estable y completo
+   (fechas locales para reporte de gestiones)
 ========================================================= */
 
 let usuarioActual = null;
@@ -32,6 +33,18 @@ async function safeJson(res) {
     const t = await res.text();
     return { status: "error", mensaje: `HTTP ${res.status} - ${t.slice(0, 200)}` };
   }
+}
+
+/* ===== Fechas locales (evita desfase UTC en reporte) ===== */
+function hoyLocalYMD() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+}
+function ymdLocal(date) {
+  const d = new Date(date);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
 }
 
 /* ===== Login / Logout ===== */
@@ -100,13 +113,13 @@ window.addEventListener("load", () => {
       document.getElementById("btnCargarReporte")?.addEventListener("click", cargarReporte);
       document.getElementById("btnExportarReporte")?.addEventListener("click", exportarReporte);
 
-      // fechas por defecto
-      const d = new Date(); const first = new Date(d.getFullYear(), d.getMonth(), 1);
-      const fmt = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+      // Fechas por defecto (local)
+      const d = new Date();
+      const first = new Date(d.getFullYear(), d.getMonth(), 1);
       const repDesde = document.getElementById("repDesde");
       const repHasta = document.getElementById("repHasta");
-      if (repDesde) repDesde.value = fmt(first);
-      if (repHasta) repHasta.value = fmt(d);
+      if (repDesde) repDesde.value = ymdLocal(first);
+      if (repHasta) repHasta.value = ymdLocal(d);
     }
 
     // Gestor
@@ -428,7 +441,7 @@ function registrarLlamada(btn, clienteId) {
     body: JSON.stringify({
       cliente_id: clienteId,
       usuario_id: usuarioActual.id,
-      fecha: new Date().toISOString().split("T")[0],
+      fecha: hoyLocalYMD(), // <-- fecha local, no UTC
       monto_cobrado: monto,
       resultado,
       observaciones
@@ -511,5 +524,12 @@ function exportarReporte() {
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Reporte");
-  XLSX.writeFile(wb, `reporte_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb, `reporte_${hoyLocalYMD()}.xlsx`);
+}
+
+/* ===== Mapa (placeholder opcional) ===== */
+let mapInstance = null, directionsRendererInstance = null;
+function inicializarMapaManual() {
+  const el = document.getElementById('mapa');
+  if (el && !el.dataset.inited) { el.dataset.inited = '1'; el.innerHTML = '<div style="padding:12px;">Mapa cargado (demo)</div>'; }
 }
