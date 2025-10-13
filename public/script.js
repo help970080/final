@@ -1,12 +1,12 @@
 /* ===========================
-   public/script.js
-   Multi-tenant: Admin / Gestor
-   - Asignación individual y masiva
-   - Reporte Admin + Exportar a Excel
-   - Maps (opcional)
+   public/script.js (estable)
+   - Asignación individual y MASIVA (resuelve id por nombre o id)
+   - Reporte Admin + Exportar a Excel (XLSX)
+   - Multi-tenant headers x-user-id / x-empresa-id
+   - Maps opcional
 =========================== */
 
-// ===== Estado global =====
+// ===== Estado =====
 let usuarioActual = null;
 let esAdmin = false;
 let esSuperadmin = false;
@@ -14,10 +14,9 @@ let empresaActivaId = null;
 
 let mapInstance = null;
 let directionsRendererInstance = null;
-
 window.Maps_API_KEY = null;
 
-// ===== Util: headers de autenticación/tenant =====
+// ===== Utils =====
 function withAuthHeaders(init = {}) {
   const u = JSON.parse(localStorage.getItem("user"));
   const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
@@ -26,14 +25,21 @@ function withAuthHeaders(init = {}) {
   if (act) headers["x-empresa-id"] = act;
   return { ...init, headers };
 }
+function mostrarMensajeFlotante(mensaje, tipo='info') {
+  const el = document.getElementById('floatingMessage');
+  if (!el) return;
+  el.textContent = mensaje;
+  el.className = ''; el.classList.add(tipo); // usa clases si tienes estilos
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 2500);
+}
 
-// ====== Login (solo si usas index.html) ======
+// ===== Login / Logout =====
 function login() {
   const nombre = document.getElementById("usuario")?.value;
   const password = document.getElementById("password")?.value;
   const messageElement = document.getElementById("login-message");
   if (!nombre || !password) { if (messageElement) messageElement.textContent = "Completa ambos campos"; return; }
-
   fetch("/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ usuario: nombre, password }) })
     .then(r => r.json())
     .then(data => {
@@ -42,22 +48,13 @@ function login() {
     })
     .catch(() => { if (messageElement) messageElement.textContent = "Error de conexión"; });
 }
-
 function cerrarSesion() {
   localStorage.removeItem("user");
   localStorage.removeItem("empresaActivaId");
   window.location.href = "/";
 }
 
-function mostrarMensajeFlotante(mensaje) {
-  const el = document.getElementById('floatingMessage');
-  if (!el) return;
-  el.textContent = mensaje;
-  el.classList.remove('hidden');
-  setTimeout(() => el.classList.add('hidden'), 2500);
-}
-
-// ====== Google Maps (opcional) ======
+// ===== Google Maps (opcional) =====
 async function ensureGoogleMapsKey() {
   if (window.google && window.google.maps) return true;
   try {
@@ -70,7 +67,6 @@ async function ensureGoogleMapsKey() {
     }
     const old = Array.from(document.scripts).find(s => s.src.includes('maps.googleapis.com/maps/api/js'));
     if (old && !old.src.includes('key=')) { try { old.parentNode.removeChild(old); } catch(_){} }
-
     if (!(window.google && window.google.maps)) {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
@@ -82,19 +78,10 @@ async function ensureGoogleMapsKey() {
       });
     }
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
-function inicializarMapa() {
-  if (typeof window.googleMapsApiLoadedCallback === 'function') {
-    window.googleMapsApiLoadedCallback();
-  }
-}
-window.googleMapsApiLoadedCallback = function(){
-  // Si quieres auto-inicializar el mapa al abrir clientes.html, descomenta:
-  // inicializarMapaManual();
-};
+function inicializarMapa(){ if (typeof window.googleMapsApiLoadedCallback === 'function') window.googleMapsApiLoadedCallback(); }
+window.googleMapsApiLoadedCallback = function(){ /* puedes llamar inicializarMapaManual(); si quieres auto */ };
 function inicializarMapaManual() {
   if (typeof google === 'undefined' || typeof google.maps === 'undefined') return;
   const el = document.getElementById('mapa'); if (!el) return;
@@ -103,11 +90,10 @@ function inicializarMapaManual() {
   directionsRendererInstance.setMap(mapInstance);
 }
 
-// ====== Boot ======
+// ===== Boot =====
 window.addEventListener("load", async () => {
   const userData = JSON.parse(localStorage.getItem("user"));
   if (!userData && window.location.pathname.includes("clientes.html")) { window.location.href = "/"; return; }
-
   usuarioActual = userData || null;
   esAdmin = (usuarioActual?.rol === 'admin');
   esSuperadmin = (usuarioActual?.rol === 'superadmin');
@@ -119,27 +105,18 @@ window.addEventListener("load", async () => {
     const span = document.getElementById("nombreUsuario");
     if (span && usuarioActual?.usuario) span.textContent = usuarioActual.usuario;
 
-    // Superadmin: muestra módulo y pobla selector
-    if (esSuperadmin) {
-      document.getElementById("seccionEmpresas")?.classList.remove("hidden");
-      poblarSelectorEmpresas();
-    }
+    if (esSuperadmin) { document.getElementById("seccionEmpresas")?.classList.remove("hidden"); poblarSelectorEmpresas(); }
 
     const actingAsEmpresa = (esSuperadmin && !!empresaActivaId);
-
     if (esAdmin || actingAsEmpresa) {
       document.getElementById("seccionAdmin")?.classList.remove("hidden");
       document.getElementById("seccionAsignacion")?.classList.remove("hidden");
 
-      // Asegura controles de Asignación Masiva si no existen en HTML
-      ensureMassAssignControls();
+      ensureMassAssignControls();   // crea controles si faltan
+      ensureReportControls();       // crea sección de reporte si falta
 
+      cargarUsuarios();             // también pobla el select de masiva
       cargarTodosLosClientes();
-      cargarUsuarios();
-
-      // Asegura controles de Reporte si no existen en HTML
-      ensureReportControls();
-
     } else if (!esSuperadmin) {
       if (usuarioActual?.id !== undefined) cargarClientes(usuarioActual.id);
     }
@@ -153,10 +130,9 @@ function poblarSelectorEmpresas() {
   fetch('/empresas', withAuthHeaders())
     .then(r => r.json())
     .then(empresas => {
-      if (!Array.isArray(empresas)) throw new Error('Respuesta inválida');
       if (select) {
         select.innerHTML = '<option value="">-- Selecciona empresa --</option>';
-        empresas.forEach(e => {
+        (empresas || []).forEach(e => {
           const o = document.createElement('option');
           o.value = e.id; o.textContent = `#${e.id} - ${e.nombre}`;
           select.appendChild(o);
@@ -190,14 +166,14 @@ function cargarUsuarios() {
           tbody.appendChild(tr);
         });
       }
-
-      // Pobla select de Asignación Masiva si existe
+      // Poblar select masivo si existe
       const sel = document.getElementById('massAssignUserSelect');
       if (sel) {
         sel.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
         (usuarios || []).forEach(u => {
           const o = document.createElement('option');
-          o.value = u.id; o.textContent = u.nombre;
+          o.value = u.id;            // valor = id (num)
+          o.textContent = u.nombre;  // etiqueta = nombre
           sel.appendChild(o);
         });
       }
@@ -208,36 +184,26 @@ function agregarUsuario() {
   const password = document.getElementById("nuevoUsuarioPassword")?.value;
   if (!nombre || !password) return;
   fetch("/usuarios", withAuthHeaders({ method: "POST", body: JSON.stringify({ nombre, password }) }))
-    .then(r => r.json())
-    .then(data => {
-      if (data.status === 'ok') {
-        document.getElementById("nuevoUsuarioNombre").value = '';
-        document.getElementById("nuevoUsuarioPassword").value = '';
-        cargarUsuarios();
-        mostrarMensajeFlotante('Usuario creado');
-      } else {
-        alert(data.mensaje || 'Error');
-      }
+    .then(r => r.json()).then(data => {
+      if (data.status === 'ok') { document.getElementById("nuevoUsuarioNombre").value = ''; document.getElementById("nuevoUsuarioPassword").value=''; cargarUsuarios(); mostrarMensajeFlotante('Usuario creado','success'); }
+      else alert(data.mensaje || 'Error');
     });
 }
 function eliminarUsuario(id) {
   if (!confirm("¿Eliminar usuario?")) return;
   fetch("/usuarios/eliminar", withAuthHeaders({ method: "POST", body: JSON.stringify({ id }) }))
-    .then(r => r.json())
-    .then(_ => cargarUsuarios());
+    .then(r => r.json()).then(_ => cargarUsuarios());
 }
 
-// ===== Admin: Clientes (Asignación Individual & Masiva) =====
+// ===== Admin: Clientes (lista / asignación 1x1) =====
 function cargarTodosLosClientes() {
   fetch("/clientes", withAuthHeaders())
     .then(res => res.json())
     .then(all => {
       const noAsig = (all || []).filter(c => c.asignado_a === null);
-      const tbody = document.querySelector("#tablaAsignarClientes tbody");
-      if (!tbody) return;
+      const tbody = document.querySelector("#tablaAsignarClientes tbody"); if (!tbody) return;
       tbody.innerHTML = "";
 
-      // Asegurar listado de usuarios para selects (si no se cargó aún)
       fetch("/usuarios", withAuthHeaders())
         .then(r => r.json())
         .then(usuarios => {
@@ -258,36 +224,42 @@ function cargarTodosLosClientes() {
         });
     });
 }
-
 function guardarAsignaciones() {
   const actualizaciones = Array.from(document.querySelectorAll("#tablaAsignarClientes .usuarioSelect"))
     .map(s => ({ id: parseInt(s.dataset.id), asignado_a: s.value ? parseInt(s.value) : null }));
-
   fetch("/actualizar-clientes", withAuthHeaders({ method: "POST", body: JSON.stringify({ clientes: actualizaciones }) }))
-    .then(r => r.json())
-    .then(_ => { mostrarMensajeFlotante('Asignaciones guardadas'); cargarTodosLosClientes(); });
+    .then(r => r.json()).then(_ => { mostrarMensajeFlotante('Asignaciones guardadas','success'); cargarTodosLosClientes(); });
 }
 
+// ===== Asignación MASIVA =====
 function ensureMassAssignControls() {
-  // Si ya existen, no hacer nada
-  if (document.getElementById('massAssignUserSelect')) return;
-
-  // Inserta UI encima de la tabla de asignación
-  const seccion = document.getElementById('seccionAsignacion');
-  if (!seccion) return;
+  if (document.getElementById('massAssignUserSelect')) return; // ya existe
+  const seccion = document.getElementById('seccionAsignacion'); if (!seccion) return;
 
   const cont = document.createElement('div');
   cont.className = 'admin-section-card';
   cont.innerHTML = `
-    <h3>Asignación masiva</h3>
     <div class="form-row">
       <select id="massAssignUserSelect"><option value="">-- Seleccionar usuario --</option></select>
-      <button id="massAssignBtn" class="button-purple">🚀 Asignar clientes seleccionados</button>
+      <button id="massAssignBtn" class="button-purple">🚀 Asignar seleccionados</button>
     </div>
     <p id="massAssignMessage" class="info"></p>
   `;
-  seccion.insertBefore(cont, seccion.querySelector('div[style*="overflow-y"]'));
+  // Inserta justo antes de la tabla
+  const scrollDiv = seccion.querySelector('div[style*="overflow-y"]');
+  seccion.insertBefore(cont, scrollDiv || seccion.firstChild);
   document.getElementById('massAssignBtn').addEventListener('click', asignarClientesMasivamente);
+}
+
+// Resuelve ID del usuario: acepta ID numérico directo o nombre (string)
+async function resolverUsuarioId(value) {
+  if (!value) return null;
+  if (/^\d+$/.test(String(value))) return Number(value);
+  // Es nombre: busca en /usuarios
+  const res = await fetch('/usuarios', withAuthHeaders());
+  const list = await res.json();
+  const found = (list || []).find(u => (u.nombre || '').toLowerCase() === String(value).toLowerCase());
+  return found ? Number(found.id) : null;
 }
 
 async function asignarClientesMasivamente() {
@@ -295,32 +267,34 @@ async function asignarClientesMasivamente() {
   const msg = document.getElementById('massAssignMessage');
   const btn = document.getElementById('massAssignBtn');
 
-  const targetUserId = sel?.value ? parseInt(sel.value) : null;
-  if (!targetUserId) { if (msg) { msg.className = 'error'; msg.textContent = 'Selecciona un usuario.'; } return; }
+  let targetVal = sel?.value || '';
+  // si el select de tu HTML trae nombres (no ids), aún así resolvemos
+  const targetUserId = await resolverUsuarioId(targetVal);
+  if (!targetUserId) { if (msg) { msg.className='error'; msg.textContent='Selecciona un usuario válido.'; } return; }
 
   const selected = Array.from(document.querySelectorAll('.client-checkbox:checked')).map(ch => parseInt(ch.dataset.id));
-  if (selected.length === 0) { if (msg) { msg.className = 'info'; msg.textContent = 'No hay clientes seleccionados.'; } return; }
+  if (selected.length === 0) { if (msg) { msg.className='info'; msg.textContent='No hay clientes seleccionados.'; } return; }
 
-  if (!confirm(`¿Asignar ${selected.length} clientes al usuario seleccionado?`)) return;
+  if (!confirm(`¿Asignar ${selected.length} clientes al usuario #${targetUserId}?`)) return;
 
   const payload = selected.map(id => ({ id, asignado_a: targetUserId }));
   btn.disabled = true; btn.textContent = 'Asignando...';
-  if (msg) { msg.className = 'info'; msg.textContent = `Asignando ${selected.length} clientes...`; }
+  if (msg) { msg.className='info'; msg.textContent=`Asignando ${selected.length} clientes...`; }
 
   try {
     const res = await fetch("/actualizar-clientes", withAuthHeaders({ method: "POST", body: JSON.stringify({ clientes: payload }) }));
     const data = await res.json();
     if (!res.ok || data.status === 'error') throw new Error(data.mensaje || `HTTP ${res.status}`);
-    if (msg) { msg.className = 'success'; msg.textContent = '✅ Asignación masiva completada.'; }
+    if (msg) { msg.className='success'; msg.textContent='✅ Asignación masiva completada.'; }
     cargarTodosLosClientes();
   } catch (e) {
-    if (msg) { msg.className = 'error'; msg.textContent = `❌ ${e.message}`; }
+    if (msg) { msg.className='error'; msg.textContent=`❌ ${e.message}`; }
   } finally {
-    btn.disabled = false; btn.textContent = '🚀 Asignar clientes seleccionados';
+    btn.disabled = false; btn.textContent = '🚀 Asignar seleccionados';
   }
 }
 
-// Filtros y helpers de asignación
+// Filtros/helpers
 function filtrarClientes() {
   const filtro = (document.getElementById('filtroCliente')?.value || '').toLowerCase();
   document.querySelectorAll('#tablaAsignarClientes tbody tr').forEach(tr => {
@@ -331,7 +305,7 @@ function toggleAllClients(cb) {
   document.querySelectorAll('#tablaAsignarClientes .client-checkbox').forEach(ch => ch.checked = cb.checked);
 }
 
-// ===== Excel (import) =====
+// ===== Excel Import =====
 function _norm(s){ return String(s||'').normalize("NFD").replace(/[\u0300-\u036f]/g, '').toLowerCase().trim(); }
 function _pick(row, keys){
   for (const k of keys) if (row[k] != null && String(row[k]).trim() !== '') return row[k];
@@ -377,7 +351,7 @@ async function limpiarClientes() {
   else { if (msg) { msg.className='error'; msg.textContent = d.mensaje || 'Error'; } }
 }
 
-// ===== Gestor: tabla de trabajo =====
+// ===== Gestor: tabla de trabajo / llamadas =====
 function cargarClientes(uid) {
   fetch(`/clientes/${uid}`, withAuthHeaders())
     .then(res => res.json())
@@ -432,14 +406,10 @@ function registrarLlamada(btn, clienteId) {
     .catch(() => { btn.disabled = false; btn.textContent = 'Registrar'; });
 }
 
-// ===== Admin: Reporte & Export =====
+// ===== Reporte & Export =====
 function ensureReportControls() {
-  // Si ya existe tabla/controles de reporte en HTML, no crear
-  if (document.getElementById('tablaReporte')) return;
-
-  // Inserta sección de reporte al final del main
-  const main = document.querySelector('main.container');
-  if (!main) return;
+  if (document.getElementById('tablaReporte')) return; // ya existe
+  const main = document.querySelector('main.container'); if (!main) return;
 
   const section = document.createElement('section');
   section.className = 'seccion-card';
@@ -472,7 +442,7 @@ function ensureReportControls() {
     </div>`;
   main.appendChild(section);
 
-  // Set default dates: mes actual
+  // fechas por defecto: mes actual
   const d = new Date(); const first = new Date(d.getFullYear(), d.getMonth(), 1);
   const fmt = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
   document.getElementById('repDesde').value = fmt(first);
@@ -482,7 +452,7 @@ function ensureReportControls() {
   document.getElementById('btnExportarReporte').addEventListener('click', exportarReporte);
 }
 
-let _ultimoReporte = []; // cache para exportación
+let _ultimoReporte = [];
 
 async function cargarReporte() {
   const desde = document.getElementById('repDesde')?.value || '';
@@ -501,7 +471,6 @@ async function cargarReporte() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const rows = Array.isArray(data) ? data : (data?.reporte || []);
-
     if (!Array.isArray(rows)) throw new Error('Formato de reporte no válido');
 
     _ultimoReporte = rows;
@@ -527,16 +496,12 @@ async function cargarReporte() {
       tbody.appendChild(tr);
     });
   } catch (e) {
-    if (msg) { msg.className='error'; msg.textContent = `No se pudo cargar el reporte: ${e.message}. ¿Existe el endpoint /reporte?`; }
+    if (msg) { msg.className='error'; msg.textContent = `No se pudo cargar el reporte: ${e.message}.`; }
   }
 }
 
 function exportarReporte() {
-  if (!Array.isArray(_ultimoReporte) || _ultimoReporte.length === 0) {
-    alert('Carga el reporte primero.');
-    return;
-  }
-  // Asegurar columnas en el mismo orden mostrado
+  if (!Array.isArray(_ultimoReporte) || _ultimoReporte.length === 0) { alert('Carga el reporte primero.'); return; }
   const rows = _ultimoReporte.map(r => ({
     Usuario: r.usuario || '',
     Cliente: r.cliente || '',
@@ -548,7 +513,6 @@ function exportarReporte() {
     "Saldo Exigible": r.saldo_exigible || '',
     Saldo: r.saldo || ''
   }));
-
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Reporte');
