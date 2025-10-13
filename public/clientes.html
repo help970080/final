@@ -5,20 +5,15 @@
   <title>Clientes Asignados</title>
   <link rel="stylesheet" href="style.css" />
   <script>
-<<<<<<< HEAD
-    // This function will be called by Google Maps API once it's loaded
-=======
->>>>>>> 91a2302 (modifica para empresas)
+    /* El callback lo usa script.js cuando inyecta Google Maps con la key */
     function inicializarMapa() {
       if (typeof window.googleMapsApiLoadedCallback === 'function') {
         window.googleMapsApiLoadedCallback();
       }
     }
   </script>
+  <!-- NO cargues aquí Google Maps sin key -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <style>
-    /* El CSS en línea se ha movido a style.css para mayor orden */
-  </style>
 </head>
 <body>
 
@@ -27,69 +22,56 @@
 </div>
 
 <h1>📞 Dashboard de Llamadas</h1>
-<p>Bienvenido, <span id="nombreUsuario"></span> | 
+<p>Bienvenido, <span id="nombreUsuario"></span> |
   <button onclick="cerrarSesion()" style="float:right;">🔒 Cerrar Sesión</button>
 </p>
 
+<!-- ===== SUPERADMIN: seleccionar empresa activa ===== -->
+<div id="seccionEmpresas" class="seccion-card hidden" style="margin-bottom:16px;">
+  <h2>🏢 Alta de Empresas (Superadmin)</h2>
+  <div class="form-row">
+    <input id="empresaNombre" placeholder="Nombre de la empresa" />
+    <input id="empresaAdminNombre" placeholder="Usuario admin" />
+    <input id="empresaAdminPassword" type="password" placeholder="Contraseña admin" />
+    <button onclick="crearEmpresa()" class="button-success">Crear Empresa</button>
+  </div>
+  <p id="empresasMensaje" class="info"></p>
+
+  <div style="margin-top:12px">
+    <button onclick="listarEmpresas()" class="button-primary">Listar Empresas</button>
+    <ul id="listaEmpresas"></ul>
+  </div>
+
+  <!-- NUEVO: selector para entrar como empresa -->
+  <div style="margin-top:16px; border-top:1px solid #ddd; padding-top:12px;">
+    <h3>👁️ Entrar como empresa</h3>
+    <div class="form-row">
+      <select id="empresaActivaSelect">
+        <option value="">-- Selecciona empresa --</option>
+      </select>
+      <button class="button-purple" onclick="activarEmpresaParaSuperadmin()">Entrar</button>
+      <button class="button-danger" onclick="salirDeEmpresaActiva()">Salir</button>
+    </div>
+    <p id="empresaActivaMsg" class="info"></p>
+  </div>
+</div>
+<!-- ===== FIN SUPERADMIN ===== -->
+
 <div id="seccionAdmin" class="hidden seccion-card">
   <h2>Panel de Administración</h2>
-  
+
   <div class="kpi-section-card">
     <h3>📊 Estadísticas Generales (KPIs)</h3>
     <div class="kpi-grid">
-      <div class="kpi-card">
-        <h4>Clientes Totales</h4>
-        <p id="kpiClientesTotales" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card">
-        <h4>Clientes Asignados</h4>
-        <p id="kpiClientesAsignados" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card">
-        <h4>Pendientes de Asignar</h4>
-        <p id="kpiClientesPendientes" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card">
-        <h4>Llamadas Registradas</h4>
-        <p id="kpiLlamadasTotales" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card">
-        <h4>Monto Total Cobrado</h4>
-        <p id="kpiMontoCobrado" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card">
-        <h4>Efectividad Llamadas (%)</h4>
-        <p id="kpiEfectividadLlamadas" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card">
-        <h4>Clientes Procesados Hoy</h4>
-        <p id="kpiClientesProcesadosHoy" class="kpi-value">...</p>
-      </div>
+      <div class="kpi-card"><h4>Clientes Totales</h4><p id="kpiClientesTotales" class="kpi-value">...</p></div>
+      <div class="kpi-card"><h4>Clientes Asignados</h4><p id="kpiClientesAsignados" class="kpi-value">...</p></div>
+      <div class="kpi-card"><h4>Pendientes de Asignar</h4><p id="kpiClientesPendientes" class="kpi-value">...</p></div>
+      <div class="kpi-card"><h4>Llamadas Registradas</h4><p id="kpiLlamadasTotales" class="kpi-value">...</p></div>
+      <div class="kpi-card"><h4>Monto Total Cobrado</h4><p id="kpiMontoCobrado" class="kpi-value">...</p></div>
+      <div class="kpi-card"><h4>Efectividad Llamadas (%)</h4><p id="kpiEfectividadLlamadas" class="kpi-value">...</p></div>
+      <div class="kpi-card"><h4>Clientes Procesados Hoy</h4><p id="kpiClientesProcesadosHoy" class="kpi-value">...</p></div>
     </div>
     <button onclick="cargarKPIs()" class="kpi-update-button">Actualizar KPIs</button>
-  </div>
-
-  <div class="kpi-section-card kpi-risk-background">
-    <h3>🚦 Análisis de Riesgo de No Pago</h3>
-    <div class="kpi-grid">
-      <div class="kpi-card kpi-riesgo-verde">
-        <h4>Riesgo Bajo (Verde)</h4>
-        <p id="kpiRiesgoVerde" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card kpi-riesgo-amarillo">
-        <h4>Riesgo Moderado (Amarillo)</h4>
-        <p id="kpiRiesgoAmarillo" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card kpi-riesgo-rojo">
-        <h4>Riesgo Alto (Rojo)</h4>
-        <p id="kpiRiesgoRojo" class="kpi-value">...</p>
-      </div>
-      <div class="kpi-card kpi-riesgo-monto-rojo">
-        <h4>Monto en Riesgo Alto</h4>
-        <p id="kpiMontoRiesgoAlto" class="kpi-value">...</p>
-      </div>
-    </div>
-    <button onclick="cargarKPIs()" class="kpi-update-button kpi-risk-button">Actualizar Riesgo</button>
   </div>
 
   <div class="kpi-section-card kpi-performance-background">
@@ -115,13 +97,11 @@
             <th>Tendencia</th>
           </tr>
         </thead>
-        <tbody>
-          </tbody>
+        <tbody></tbody>
       </table>
     </div>
     <button onclick="cargarKPIs()" class="kpi-update-button kpi-performance-button">Actualizar Rendimiento</button>
   </div>
-
 
   <div class="admin-section-card">
     <h3>📤 Subir Clientes desde Excel</h3>
@@ -141,11 +121,7 @@
 
     <table id="tablaUsuarios">
       <thead>
-        <tr>
-          <th>ID</th>
-          <th>Nombre</th>
-          <th>Acción</th>
-        </tr>
+        <tr><th>ID</th><th>Nombre</th><th>Acción</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -154,7 +130,6 @@
 
 <div id="seccionAsignacion" class="hidden seccion-card">
   <h2>📌 Asignación de Clientes (Clientes no asignados)</h2>
-  
   <div class="form-row">
     <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" />
     <button onclick="guardarAsignaciones()" class="button-primary">💾 Guardar Asignaciones Individuales</button>
@@ -162,14 +137,10 @@
 
   <div class="mass-assign-section">
     <h3>Asignación Masiva</h3>
-    <select id="massAssignUserSelect">
-        <option value="">-- Seleccionar usuario --</option>
-    </select>
+    <select id="massAssignUserSelect"><option value="">-- Seleccionar usuario --</option></select>
     <button onclick="asignarClientesMasivamente()" class="button-purple">🚀 Asignar Clientes Seleccionados</button>
     <p id="massAssignMessage" class="info"></p>
   </div>
-  <p class="admin-message"></p>
-
 
   <div style="max-height: 500px; overflow-y: auto;">
     <table id="tablaAsignarClientes">
@@ -219,9 +190,7 @@
     <div id="mapa"></div>
     <div id="info-ruta">
       <p>Presiona el botón para cargar el mapa.</p>
-      <button onclick="inicializarMapaManual()" class="button-map">
-        🗺️ Recargar Mapa / Ubicaciones
-      </button>
+      <button onclick="inicializarMapaManual()" class="button-map">🗺️ Recargar Mapa / Ubicaciones</button>
     </div>
   </div>
 </div>
@@ -257,6 +226,5 @@
 <p><a href="/">← Volver al inicio</a></p>
 
 <script src="script.js"></script>
-
 </body>
 </html>
