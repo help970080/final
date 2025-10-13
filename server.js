@@ -1,4 +1,4 @@
-// .env solo en dev; en Render se usan env vars del panel
+// .env solo en desarrollo; en Render se usan vars del panel
 if (process.env.NODE_ENV !== 'production') {
   try { require('dotenv').config(); } catch (_) {}
 }
@@ -18,7 +18,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ====== Rutas de datos ======
+// ===== Rutas de datos =====
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'database.json');
 const EMPRESAS_PATH = path.join(DATA_DIR, 'empresas.json');
@@ -51,7 +51,7 @@ function saveEmpresas(list) { writeJSON(EMPRESAS_PATH, list); }
 
 function nextId(list) { return list.length ? Math.max(...list.map(x => x.id || 0)) + 1 : 1; }
 
-// ====== Seed mínimo ======
+// ===== Seed mínimo =====
 (function seed() {
   let empresas = loadEmpresas();
   if (empresas.length === 0) {
@@ -68,7 +68,7 @@ function nextId(list) { return list.length ? Math.max(...list.map(x => x.id || 0
   saveDB(db);
 })();
 
-// ====== Helpers de tenant ======
+// ===== Helpers de tenant =====
 function getEmpresaIdFromReq(req) {
   // Superadmin actuando como empresa
   if (req.headers['x-empresa-id']) return Number(req.headers['x-empresa-id']);
@@ -82,13 +82,13 @@ function getEmpresaIdFromReq(req) {
   return null;
 }
 
-// ====== API KEY Maps ======
+// ===== API KEY Maps =====
 app.get('/api-key', (req, res) => {
   if (!MAPS_API_KEY) return res.status(500).json({ error: 'Maps_API_KEY no configurada' });
   res.json({ key: MAPS_API_KEY });
 });
 
-// ====== Auth ======
+// ===== Auth =====
 app.post('/login', (req, res) => {
   const { usuario, password } = req.body || {};
   const db = loadDB();
@@ -97,7 +97,7 @@ app.post('/login', (req, res) => {
   return res.json({ status: 'ok', id: u.id, usuario: u.nombre, rol: u.rol, empresa_id: u.empresa_id ?? null });
 });
 
-// ====== Empresas (solo superadmin) ======
+// ===== Empresas (solo superadmin) =====
 app.get('/empresas', (req, res) => {
   if (String(req.headers['x-user-id']) !== '0') return res.status(403).json({ status: 'error', mensaje: 'Solo superadmin' });
   res.json(loadEmpresas());
@@ -117,7 +117,7 @@ app.post('/empresas/crear', (req, res) => {
   res.json({ status: 'ok', mensaje: 'Empresa creada', empresa: { id, nombre } });
 });
 
-// ====== Usuarios (por empresa) ======
+// ===== Usuarios (por empresa) =====
 app.get('/usuarios', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -152,7 +152,7 @@ app.post('/usuarios/eliminar', (req, res) => {
   res.json({ status: 'ok', mensaje: 'Eliminado' });
 });
 
-// ====== Clientes ======
+// ===== Clientes =====
 app.get('/clientes', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -255,7 +255,7 @@ app.post('/actualizar-coordenadas', async (req, res) => {
   }
 });
 
-// ====== Llamadas ======
+// ===== Llamadas =====
 app.post('/llamadas', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -275,7 +275,7 @@ app.post('/llamadas', (req, res) => {
   res.json({ status: 'ok', mensaje: 'Llamada registrada' });
 });
 
-// ====== Ubicación de usuario (opcional) ======
+// ===== Ubicación de usuario (opcional) =====
 app.post('/actualizar-ubicacion-usuario', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -286,5 +286,82 @@ app.post('/actualizar-ubicacion-usuario', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// ====== Start ======
+// ======== REPORTE DE GESTIONES ========
+// GET /reporte?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&usuario_id=123&resultado=Éxito
+app.get('/reporte', (req, res) => {
+  const empresaId = getEmpresaIdFromReq(req);
+  if (empresaId == null) {
+    return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
+  }
+
+  const { desde, hasta, usuario_id, resultado } = req.query;
+
+  // Normaliza fechas (inclusivo)
+  let start = null, end = null;
+  try {
+    if (desde) start = new Date(`${desde}T00:00:00`);
+    if (hasta) end   = new Date(`${hasta}T23:59:59`);
+  } catch (_) { /* ignorar */ }
+
+  const db = loadDB();
+
+  // Índices para enriquecer filas
+  const usuariosIdx = {};
+  for (const u of db.usuarios) {
+    if (u.empresa_id === empresaId) usuariosIdx[u.id] = u;
+  }
+  const clientesIdx = {};
+  for (const c of db.clientes) {
+    if (c.empresa_id === empresaId) clientesIdx[c.id] = c;
+  }
+
+  // Filtra llamadas de la empresa
+  let llamadas = (db.llamadas || []).filter(l => Number(l.empresa_id) === Number(empresaId));
+
+  // Fecha (inclusivo)
+  if (start) llamadas = llamadas.filter(l => {
+    const f = new Date(`${l.fecha}T00:00:00`);
+    return f >= start;
+  });
+  if (end) llamadas = llamadas.filter(l => {
+    const f = new Date(`${l.fecha}T23:59:59`);
+    return f <= end;
+  });
+
+  // Filtros opcionales
+  if (usuario_id) {
+    const uid = Number(usuario_id);
+    llamadas = llamadas.filter(l => Number(l.usuario_id) === uid);
+  }
+  if (resultado) {
+    const rnorm = String(resultado).toLowerCase();
+    llamadas = llamadas.filter(l => String(l.resultado || '').toLowerCase() === rnorm);
+  }
+
+  // Arma filas enriquecidas
+  const filas = llamadas.map(l => {
+    const u = usuariosIdx[l.usuario_id] || {};
+    const c = clientesIdx[l.cliente_id] || {};
+    return {
+      usuario_id: l.usuario_id,
+      usuario: u.nombre || `#${l.usuario_id}`,
+      cliente_id: l.cliente_id,
+      cliente: c.nombre || `#${l.cliente_id}`,
+      resultado: l.resultado || '',
+      monto_cobrado: Number(l.monto_cobrado || 0),
+      fecha: l.fecha, // YYYY-MM-DD
+      observaciones: l.observaciones || '',
+      tarifa: c.tarifa || '',
+      saldo_exigible: c.saldo_exigible || '',
+      saldo: c.saldo || ''
+    };
+  });
+
+  // Ordena por fecha desc (más reciente primero)
+  filas.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+
+  return res.json(filas);
+});
+
+// ===== Start =====
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));

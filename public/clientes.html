@@ -86,10 +86,18 @@
   <!-- Asignación -->
   <section id="seccionAsignacion" class="hidden seccion-card">
     <h2>📌 Asignación de Clientes</h2>
-    <div class="form-row">
+
+    <div class="form-row" style="gap:8px; flex-wrap: wrap;">
       <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" />
-      <button onclick="guardarAsignaciones()" class="button-primary">💾 Guardar</button>
+      <button onclick="guardarAsignaciones()" class="button-primary">💾 Guardar (1 x 1)</button>
+
+      <select id="massAssignUserSelect">
+        <option value="">-- Seleccionar usuario --</option>
+      </select>
+      <button onclick="asignarClientesMasivamente()" class="button-purple">🚀 Asignar seleccionados</button>
+      <span id="massAssignMessage" class="info"></span>
     </div>
+
     <div style="max-height: 500px; overflow-y: auto;">
       <table id="tablaAsignarClientes">
         <thead>
@@ -114,6 +122,30 @@
             <th>Cliente</th><th>Teléfono</th><th>Dirección</th>
             <th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th>
             <th>Monto Cobrado</th><th>Resultado</th><th>Observaciones</th><th>Acción</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Reporte Admin -->
+  <section id="seccionReporte" class="seccion-card hidden">
+    <h2>📄 Reporte de Gestiones</h2>
+    <div class="form-row" style="gap:8px; flex-wrap: wrap;">
+      <label>Desde: <input type="date" id="repDesde"></label>
+      <label>Hasta: <input type="date" id="repHasta"></label>
+      <button class="button-primary" onclick="cargarReporte()">🔄 Mostrar</button>
+      <button class="button-export" onclick="exportarReporte()">📥 Exportar a Excel</button>
+      <span class="report-message"></span>
+    </div>
+    <div style="max-height: 500px; overflow-y: auto;">
+      <table id="tablaReporte">
+        <thead>
+          <tr>
+            <th>Usuario</th><th>Cliente</th><th>Resultado</th>
+            <th>Monto Cobrado</th><th>Fecha</th><th>Observaciones</th>
+            <th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th>
           </tr>
         </thead>
         <tbody></tbody>
