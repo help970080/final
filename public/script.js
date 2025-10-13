@@ -1,4 +1,4 @@
-// public/script.js (multi-tenant listo + Render + superadmin elige empresa + Excel)
+// public/script.js (multi-tenant + superadmin empresa activa + Excel + Objetivos + KPIs semáforo)
 let usuarioActual = null;
 let esAdmin = false;          // admin de empresa
 let esSuperadmin = false;     // superadmin global
@@ -16,7 +16,6 @@ window.Maps_API_KEY = null;
 async function ensureGoogleMapsKey() {
   if (window.google && window.google.maps) return true;
   try {
-    // Pide la API key al backend
     if (!window.Maps_API_KEY) {
       const res = await fetch('/api-key');
       if (!res.ok) throw new Error('No API key configurada en el backend');
@@ -24,10 +23,8 @@ async function ensureGoogleMapsKey() {
       if (!data?.key) throw new Error('Respuesta /api-key inválida');
       window.Maps_API_KEY = data.key;
     }
-    // Si hay un script de Maps sin key, elimínalo
     const old = Array.from(document.scripts).find(s => s.src.includes('maps.googleapis.com/maps/api/js'));
     if (old && !old.src.includes('key=')) { try { old.parentNode.removeChild(old); } catch(_){} }
-    // Inyecta el script con key si aún no está cargado
     if (!(window.google && window.google.maps)) {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
@@ -143,6 +140,7 @@ window.addEventListener("load", async () => {
       cargarTodosLosClientes();
       cargarUsuarios();
       if (typeof cargarKPIsConFecha === 'function') cargarKPIsConFecha();
+      if (typeof cargarObjetivos === 'function') cargarObjetivos();
     } else if (!esSuperadmin) {
       // GESTOR
       document.getElementById("seccionAdmin")?.classList.add("hidden");
@@ -837,4 +835,140 @@ function filtrarClientes() {
 function toggleAllClients(checkbox) {
   const checks = document.querySelectorAll('#tablaAsignarClientes .client-checkbox');
   checks.forEach(ch => ch.checked = checkbox.checked);
+}
+
+/* =========================================
+   Objetivos por Gestor (Admin)
+   ========================================= */
+async function cargarObjetivos() {
+  try {
+    const ures = await fetch('/usuarios', withAuthHeaders());
+    if (!ures.ok) throw new Error(`HTTP ${ures.status}`);
+    const usuarios = await ures.json();
+    if (!Array.isArray(usuarios)) throw new Error('Usuarios no es array');
+
+    const res = await fetch('/objetivos', withAuthHeaders());
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const objetivos = (data && data.objetivos) ? data.objetivos : [];
+
+    const tbody = document.querySelector('#tablaObjetivos tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    usuarios.forEach(u => {
+      const obj = objetivos.find(o => Number(o.usuario_id) === Number(u.id));
+      const valor = obj ? Number(obj.objetivo_monto) : '';
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${u.nombre}</td>
+        <td><input type="number" min="0" step="1" class="input-objetivo" data-uid="${u.id}" value="${valor !== '' ? valor : ''}" placeholder="0" /></td>
+        <td>
+          <button class="button-primary" onclick="guardarObjetivo(${u.id})">💾 Guardar</button>
+          ${valor !== '' ? `<button class="button-danger" onclick="eliminarObjetivo(${u.id})">🗑️ Eliminar</button>` : ''}
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error('cargarObjetivos:', e);
+    const tbody = document.querySelector('#tablaObjetivos tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="error">Error al cargar objetivos: ${e.message}</td></tr>`;
+  }
+}
+
+async function guardarObjetivo(usuarioId) {
+  try {
+    const input = document.querySelector(`.input-objetivo[data-uid="${usuarioId}"]`);
+    const valor = input && input.value ? Number(input.value) : 0;
+    const res = await fetch('/objetivos/upsert', withAuthHeaders({
+      method: 'POST',
+      body: JSON.stringify({ usuario_id: usuarioId, objetivo_monto: valor })
+    }));
+    const data = await res.json();
+    if (!res.ok || data.status !== 'ok') throw new Error(data.mensaje || `HTTP ${res.status}`);
+    mostrarMensajeFlotante('Objetivo guardado');
+    await cargarObjetivos();
+    if (typeof cargarKPIsConFecha === 'function') cargarKPIsConFecha();
+  } catch (e) {
+    alert('Error al guardar objetivo: ' + e.message);
+  }
+}
+
+async function eliminarObjetivo(usuarioId) {
+  if (!confirm('¿Eliminar objetivo de este gestor?')) return;
+  try {
+    const res = await fetch('/objetivos/eliminar', withAuthHeaders({
+      method: 'POST',
+      body: JSON.stringify({ usuario_id: usuarioId })
+    }));
+    const data = await res.json();
+    if (!res.ok || data.status !== 'ok') throw new Error(data.mensaje || `HTTP ${res.status}`);
+    mostrarMensajeFlotante('Objetivo eliminado');
+    await cargarObjetivos();
+    if (typeof cargarKPIsConFecha === 'function') cargarKPIsConFecha();
+  } catch (e) {
+    alert('Error al eliminar objetivo: ' + e.message);
+  }
+}
+
+/* =========================================
+   KPIs con avance vs objetivo y semáforo
+   ========================================= */
+function renderSemaforo(color) {
+  const map = {
+    rojo:   '#d32f2f',
+    amarillo:'#f9a825',
+    naranja:'#fb8c00',
+    verde:  '#2e7d32',
+    gris:   '#9e9e9e'
+  };
+  const c = map[color] || map.gris;
+  return `<span title="${color}" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${c};vertical-align:middle;"></span>`;
+}
+
+function renderBar(pct) {
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  return `
+    <div style="width:140px;height:12px;border:1px solid #ccc;border-radius:6px;overflow:hidden;display:inline-block;vertical-align:middle;">
+      <div style="width:${p}%;height:100%;background:#1976d2;"></div>
+    </div>
+    <span style="margin-left:6px;min-width:48px;display:inline-block;">${p}%</span>
+  `;
+}
+
+async function cargarKPIsConFecha() {
+  try {
+    const desdeInput = document.getElementById('fechaInicioBonos');
+    const desde = desdeInput && desdeInput.value ? desdeInput.value : null;
+
+    const url = desde ? `/kpis-gestores?desde=${encodeURIComponent(desde)}` : `/kpis-gestores`;
+    const res = await fetch(url, withAuthHeaders());
+    const data = await res.json();
+    if (!res.ok || data.status !== 'ok') throw new Error(data.mensaje || `HTTP ${res.status}`);
+
+    const tbody = document.querySelector('#tablaRendimientoGestores tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    data.kpis.forEach(k => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${k.nombre}</td>
+        <td>$ ${Number(k.total_cobrado || 0).toLocaleString()}</td>
+        <td>${k.efectividad}%</td>
+        <td>${k.llamadas_totales}</td>
+        <td>$ ${Number(k.objetivo || 0).toLocaleString()}</td>
+        <td>${renderBar(k.avance_porcentaje)}</td>
+        <td>${renderSemaforo(k.semaforo)}</td>
+        <td>${desde || data.desde}</td>
+        <td colspan="2"></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error('cargarKPIsConFecha:', e);
+    const tbody = document.querySelector('#tablaRendimientoGestores tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="error">Error KPIs: ${e.message}</td></tr>`;
+  }
 }
