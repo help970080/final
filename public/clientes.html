@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Dashboard de Llamadas</title>
   <link rel="stylesheet" href="/style.css"/>
-  <!-- XLSX para importar/exportar Excel -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -18,47 +17,36 @@
   </header>
 
   <main class="container">
-    <!-- ==== Panel Superadmin: seleccionar / crear empresa ==== -->
+    <!-- Superadmin: Empresas -->
     <section id="seccionEmpresas" class="admin-section-card hidden" style="margin-bottom:16px;">
       <h2>Empresas</h2>
       <div class="form-row">
-        <select id="empresaActivaSelect">
-          <option value="">-- Selecciona empresa --</option>
-        </select>
+        <select id="empresaActivaSelect"><option value="">-- Selecciona empresa --</option></select>
         <button id="btnEntrarEmpresa" class="button-primary">Entrar</button>
         <button id="btnSalirEmpresa" class="button-secondary">Salir</button>
       </div>
       <p id="empresaActivaMsg" class="info"></p>
-
-      <hr style="margin:12px 0;">
-
+      <hr>
       <h3>Crear nueva empresa</h3>
       <div class="form-row">
         <input id="nuevaEmpresaNombre" type="text" placeholder="Nombre de la empresa" />
-        <input id="nuevaEmpresaAdmin" type="text" placeholder="Usuario admin (de la empresa)" />
+        <input id="nuevaEmpresaAdmin" type="text" placeholder="Usuario admin" />
         <input id="nuevaEmpresaPass" type="password" placeholder="Contraseña admin" />
         <button id="btnCrearEmpresa" class="button-success">➕ Crear Empresa</button>
       </div>
       <p id="empresaCreateMsg" class="info"></p>
     </section>
 
-    <!-- ==== Bandeja del Gestor ==== -->
+    <!-- Bandeja Gestor -->
     <section class="card">
       <h2>Mis Clientes Asignados</h2>
       <div class="scroll">
         <table id="tablaClientes">
           <thead>
             <tr>
-              <th>Cliente</th>
-              <th>Teléfono</th>
-              <th>Dirección</th>
-              <th>Tarifa</th>
-              <th>Saldo Exigible</th>
-              <th>Saldo</th>
-              <th>Monto Cobrado</th>
-              <th>Resultado</th>
-              <th>Observaciones</th>
-              <th>Acción</th>
+              <th>Cliente</th><th>Teléfono</th><th>Dirección</th><th>Tarifa</th>
+              <th>Saldo Exigible</th><th>Saldo</th><th>Monto Cobrado</th>
+              <th>Resultado</th><th>Observaciones</th><th>Acción</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -66,11 +54,10 @@
       </div>
     </section>
 
-    <!-- ==== Panel de Administración ==== -->
+    <!-- Admin Empresa -->
     <section id="seccionAdmin" class="admin-section-card hidden">
       <h2>Panel de Administración</h2>
 
-      <!-- Subir clientes -->
       <div class="card">
         <h3>📥 Subir Clientes desde Excel</h3>
         <input type="file" id="archivoExcel" accept=".xlsx,.xls" onchange="procesarArchivo(event)"/>
@@ -80,7 +67,6 @@
         </div>
       </div>
 
-      <!-- Gestión de Usuarios -->
       <div class="card">
         <h3>👥 Gestionar Usuarios</h3>
         <div class="form-row">
@@ -96,7 +82,6 @@
         </div>
       </div>
 
-      <!-- Asignación de Clientes -->
       <div id="seccionAsignacion" class="card">
         <h3>📌 Asignación de Clientes</h3>
         <div class="form-row">
@@ -105,26 +90,18 @@
             <button id="btnGuardarUnoAUno" class="button-primary" onclick="guardarAsignaciones()">💾 Guardar (1 x 1)</button>
           </div>
         </div>
-
-        <!-- Controles masivos -->
         <div class="form-row">
           <select id="massAssignUserSelect"><option value="">-- Seleccionar usuario --</option></select>
           <button id="massAssignBtn" class="button-purple">🚀 Asignar Clientes Seleccionados</button>
         </div>
         <p id="massAssignMessage" class="info"></p>
-
         <div class="scroll">
           <table id="tablaAsignarClientes">
             <thead>
               <tr>
                 <th><input type="checkbox" onclick="toggleAllClients(this)"/></th>
-                <th>Cliente</th>
-                <th>Teléfono</th>
-                <th>Dirección</th>
-                <th>Tarifa</th>
-                <th>Saldo Exigible</th>
-                <th>Saldo</th>
-                <th>Usuario Asignado</th>
+                <th>Cliente</th><th>Teléfono</th><th>Dirección</th><th>Tarifa</th>
+                <th>Saldo Exigible</th><th>Saldo</th><th>Usuario Asignado</th>
               </tr>
             </thead>
             <tbody></tbody>
@@ -132,7 +109,15 @@
         </div>
       </div>
 
-      <!-- Reporte -->
+      <div class="card">
+        <h2>🗺️ Mapa de Gestores</h2>
+        <div class="form-row">
+          <button id="btnRecargarMapa" class="button-secondary">Recargar Mapa</button>
+          <span id="autoRefreshInfo" class="info"></span>
+        </div>
+        <div id="mapa" style="height:420px;border-radius:12px;overflow:hidden;background:#f5f7fb;"></div>
+      </div>
+
       <div class="card">
         <h3>📊 Reporte de Gestiones</h3>
         <div class="form-row">
@@ -146,15 +131,8 @@
           <table id="tablaReporte">
             <thead>
               <tr>
-                <th>Usuario</th>
-                <th>Cliente</th>
-                <th>Resultado</th>
-                <th>Monto Cobrado</th>
-                <th>Fecha</th>
-                <th>Observaciones</th>
-                <th>Tarifa</th>
-                <th>Saldo Exigible</th>
-                <th>Saldo</th>
+                <th>Usuario</th><th>Cliente</th><th>Resultado</th><th>Monto Cobrado</th>
+                <th>Fecha</th><th>Observaciones</th><th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th>
               </tr>
             </thead>
             <tbody></tbody>

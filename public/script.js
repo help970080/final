@@ -1,6 +1,6 @@
 /* =========================================================
-   public/script.js — multi-empresa estable y completo
-   (fechas locales + headers corregidos)
+   public/script.js — multi-empresa + tracking y mapa
+   (fechas locales + headers corregidos + geolocalización)
 ========================================================= */
 
 let usuarioActual = null;
@@ -10,8 +10,6 @@ let empresaActivaId = null;
 
 /* ===== Utilidades ===== */
 
-// Enviar headers de autenticación.
-// x-empresa-id SOLO para superadmin o admin (evita cruces cuando entra un gestor).
 function withAuthHeaders(init = {}) {
   const u = JSON.parse(localStorage.getItem("user"));
   const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
@@ -22,7 +20,6 @@ function withAuthHeaders(init = {}) {
   if (act && (u?.rol === "superadmin" || u?.rol === "admin")) {
     headers["x-empresa-id"] = act;
   }
-
   return { ...init, headers };
 }
 
@@ -46,7 +43,7 @@ async function safeJson(res) {
   }
 }
 
-// Fecha local en formato YYYY-MM-DD (evita desfase por UTC)
+// Fecha local YYYY-MM-DD
 function hoyLocalYMD() {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -74,7 +71,6 @@ function login() {
   .then(data => {
     if (data.status === "ok") {
       localStorage.setItem("user", JSON.stringify(data));
-      // Si NO es superadmin, evita heredar empresaActivaId de sesiones previas
       if (data.rol !== "superadmin") localStorage.removeItem("empresaActivaId");
       window.location.href = "/clientes.html";
     } else {
@@ -103,7 +99,7 @@ window.addEventListener("load", () => {
     const span = document.getElementById("nombreUsuario");
     if (span && usuarioActual?.usuario) span.textContent = usuarioActual.usuario;
 
-    // Superadmin: panel de empresas
+    // Superadmin: empresas
     if (esSuperadmin) {
       const sec = document.getElementById("seccionEmpresas");
       if (sec) {
@@ -126,18 +122,20 @@ window.addEventListener("load", () => {
       document.getElementById("btnCargarReporte")?.addEventListener("click", cargarReporte);
       document.getElementById("btnExportarReporte")?.addEventListener("click", exportarReporte);
 
-      // Fechas por defecto (local)
-      const d = new Date();
-      const first = new Date(d.getFullYear(), d.getMonth(), 1);
-      const repDesde = document.getElementById("repDesde");
-      const repHasta = document.getElementById("repHasta");
-      if (repDesde) repDesde.value = ymdLocal(first);
-      if (repHasta) repHasta.value = ymdLocal(d);
+      // Fechas por defecto
+      const d = new Date(); const first = new Date(d.getFullYear(), d.getMonth(), 1);
+      document.getElementById("repDesde").value = ymdLocal(first);
+      document.getElementById("repHasta").value = ymdLocal(d);
+
+      // Mapa admin/superadmin
+      prepararMapaAdmin();
+      document.getElementById('btnRecargarMapa')?.addEventListener('click', cargarMapaGestores);
     }
 
-    // Gestor
+    // Gestor: bandeja + tracking
     if (!esSuperadmin && usuarioActual?.id !== undefined) {
       cargarClientes(usuarioActual.id);
+      iniciarTrackingGestor();
     }
   }
 });
@@ -198,21 +196,17 @@ function crearEmpresaSuperadmin() {
 
     if (msg) { msg.className = 'success'; msg.textContent = `✅ ${data.mensaje}: #${data.empresa.id} - ${data.empresa.nombre}`; }
 
-    // Limpia campos
-    const n = document.getElementById('nuevaEmpresaNombre'); if (n) n.value = '';
-    const an = document.getElementById('nuevaEmpresaAdmin'); if (an) an.value = '';
-    const ap = document.getElementById('nuevaEmpresaPass'); if (ap) ap.value = '';
+    document.getElementById('nuevaEmpresaNombre').value = '';
+    document.getElementById('nuevaEmpresaAdmin').value = '';
+    document.getElementById('nuevaEmpresaPass').value = '';
 
-    // Repoblar el selector, seleccionar la nueva y entrar
     poblarSelectorEmpresas();
     localStorage.setItem('empresaActivaId', String(data.empresa.id));
     const m2 = document.getElementById('empresaActivaMsg');
     if (m2) { m2.className = 'success'; m2.textContent = `Ahora administras la empresa #${data.empresa.id}`; }
     setTimeout(() => location.reload(), 500);
   })
-  .catch(err => {
-    if (msg) { msg.className = 'error'; msg.textContent = `❌ ${err.message}`; }
-  });
+  .catch(err => { if (msg) { msg.className = 'error'; msg.textContent = `❌ ${err.message}`; } });
 }
 
 /* ===== Usuarios (admin) ===== */
@@ -454,7 +448,7 @@ function registrarLlamada(btn, clienteId) {
     body: JSON.stringify({
       cliente_id: clienteId,
       usuario_id: usuarioActual.id,
-      fecha: hoyLocalYMD(), // fecha local
+      fecha: hoyLocalYMD(),
       monto_cobrado: monto,
       resultado,
       observaciones
@@ -540,9 +534,109 @@ function exportarReporte() {
   XLSX.writeFile(wb, `reporte_${hoyLocalYMD()}.xlsx`);
 }
 
-/* ===== Mapa (placeholder opcional para evitar errores si no hay API Key) ===== */
-let mapInstance = null, directionsRendererInstance = null;
-function inicializarMapaManual() {
-  const el = document.getElementById('mapa');
-  if (el && !el.dataset.inited) { el.dataset.inited = '1'; el.innerHTML = '<div style="padding:12px;">Mapa cargado (demo)</div>'; }
+/* ===== Geolocalización & Mapa ===== */
+let googleMapsLoaded = false;
+let map = null;
+let adminMarkers = [];
+let autoRefreshTimer = null;
+
+async function loadGoogleMapsApi() {
+  if (googleMapsLoaded) return true;
+  try {
+    const r = await fetch('/api-key');
+    const j = await r.json();
+    if (!j?.key) throw new Error('Sin API Key');
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(j.key)}&libraries=geometry`;
+      s.async = true; s.defer = true;
+      s.onload = () => { googleMapsLoaded = true; resolve(); };
+      s.onerror = () => reject(new Error('No se pudo cargar Google Maps'));
+      document.head.appendChild(s);
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Admin: inicializa mapa y refresco
+async function prepararMapaAdmin() {
+  const mapaEl = document.getElementById('mapa');
+  if (!mapaEl) return;
+
+  const ok = await loadGoogleMapsApi();
+  if (!ok) {
+    mapaEl.innerHTML = '<div style="padding:12px">Mapa no disponible (sin API Key). Se mostrará una vista básica.</div>';
+    return;
+  }
+
+  map = new google.maps.Map(mapaEl, {
+    center: { lat: 19.4326, lng: -99.1332 }, zoom: 11,
+    mapTypeControl: false, streetViewControl: false
+  });
+
+  cargarMapaGestores();
+  if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+  autoRefreshTimer = setInterval(cargarMapaGestores, 30 * 60 * 1000); // cada 30 min
+  const info = document.getElementById('autoRefreshInfo');
+  if (info) info.textContent = 'Actualización automática cada 30 minutos.';
+}
+
+async function cargarMapaGestores() {
+  if (!map) return;
+  adminMarkers.forEach(m => m.setMap(null));
+  adminMarkers = [];
+
+  try {
+    const res = await fetch('/ubicaciones/ultimas', withAuthHeaders());
+    const data = await safeJson(res);
+    if (!Array.isArray(data)) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    data.forEach(u => {
+      if (u.lat == null || u.lng == null) return;
+      const marker = new google.maps.Marker({
+        position: { lat: Number(u.lat), lng: Number(u.lng) },
+        map,
+        title: `${u.usuario} (${new Date(u.fecha).toLocaleString()})`
+      });
+      const infow = new google.maps.InfoWindow({
+        content: `<strong>${u.usuario}</strong><br>Última: ${new Date(u.fecha).toLocaleString()}`
+      });
+      marker.addListener('click', ()=> infow.open({ map, anchor: marker }));
+      adminMarkers.push(marker);
+      bounds.extend(marker.getPosition());
+    });
+    if (!bounds.isEmpty()) map.fitBounds(bounds);
+  } catch (e) {
+    console.warn('cargarMapaGestores error:', e.message);
+  }
+}
+
+// Gestor: envía ubicación al entrar y cada 30 min
+function iniciarTrackingGestor() {
+  if (!navigator.geolocation) return;
+  // Disparo inmediato
+  navigator.geolocation.getCurrentPosition(pos => {
+    enviarUbicacion(pos.coords.latitude, pos.coords.longitude);
+  }, ()=>{}, { maximumAge: 0, enableHighAccuracy: true, timeout: 8000 });
+
+  // Cada 30 min
+  setInterval(() => {
+    navigator.geolocation.getCurrentPosition(pos => {
+      enviarUbicacion(pos.coords.latitude, pos.coords.longitude);
+    }, ()=>{}, { maximumAge: 0, enableHighAccuracy: true, timeout: 8000 });
+  }, 30 * 60 * 1000);
+}
+
+async function enviarUbicacion(lat, lng) {
+  try {
+    await fetch('/ubicacion', withAuthHeaders({
+      method: 'POST',
+      body: JSON.stringify({ usuario_id: usuarioActual.id, lat, lng, fecha: new Date().toISOString() })
+    }));
+  } catch (e) {
+    console.warn('enviarUbicacion error:', e.message);
+  }
 }

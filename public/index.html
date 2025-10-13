@@ -1,53 +1,19 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Sistema de Gestión de Llamadas</title>
-    <link rel="stylesheet" href="style.css">
-    <style>
-      .container {
-        max-width: 400px;
-        margin: 50px auto;
-        padding: 20px;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-      }
-      input {
-        width: 100%;
-        padding: 10px;
-        margin: 10px 0;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-      }
-      button {
-        width: 100%;
-        padding: 10px;
-        background: #4285F4;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      #login-message {
-        color: red;
-        margin-top: 10px;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <h1>Sistema de Llamadas</h1>
-      <div id="login-form">
-        <h2>Iniciar Sesión</h2>
-        <input type="text" id="usuario" placeholder="Usuario">
-        <input type="password" id="password" placeholder="Contraseña">
-        <button onclick="login()">Ingresar</button>
-        <p id="login-message"></p>
-      </div>
-    </div>
-
-    <script src="script.js"></script>
-  </body>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Login</title>
+  <link rel="stylesheet" href="/style.css"/>
+</head>
+<body class="login">
+  <div class="login-card">
+    <h1>Ingreso</h1>
+    <input id="usuario" type="text" placeholder="Usuario"/>
+    <input id="password" type="password" placeholder="Contraseña"/>
+    <button class="button-primary" onclick="login()">Entrar</button>
+    <p id="login-message" class="info"></p>
+  </div>
+  <script src="/script.js"></script>
+</body>
 </html>

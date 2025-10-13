@@ -1,6 +1,5 @@
 // server.js
 
-// .env solo en desarrollo
 if (process.env.NODE_ENV !== 'production') {
   try { require('dotenv').config(); } catch (_) {}
 }
@@ -15,120 +14,76 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 const MAPS_API_KEY = process.env.MAPS_API_KEY || process.env.Maps_API_KEY || '';
 
-// ===== Middleware base =====
 app.use(cors());
-
-// Límites de payload holgados para Excel grande
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
-
-// Archivos estáticos
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Healthcheck para Render
 app.get('/healthz', (req, res) => res.status(200).send('ok'));
+process.on('uncaughtException', (e) => console.error('[uncaughtException]', e));
+process.on('unhandledRejection', (r) => console.error('[unhandledRejection]', r));
 
-// Captura global de errores para evitar caída del proceso
-process.on('uncaughtException', (err) => {
-  console.error('[uncaughtException]', err);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('[unhandledRejection]', reason);
-});
-
-// ===== Paths y helpers de almacenamiento =====
+// ===== Storage helpers =====
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'database.json');
 const EMPRESAS_PATH = path.join(DATA_DIR, 'empresas.json');
-
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
-function readJSON(p, fallback) {
-  try {
-    if (!fs.existsSync(p)) return fallback;
-    const t = fs.readFileSync(p, 'utf8');
-    return t ? JSON.parse(t) : fallback;
-  } catch { return fallback; }
-}
-function writeJSON(p, data) { fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8'); }
+const readJSON = (p, fb) => { try { return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')||'') : fb; } catch { return fb; } };
+const writeJSON = (p, d) => fs.writeFileSync(p, JSON.stringify(d, null, 2), 'utf8');
 
-function loadDB() {
-  return readJSON(DB_PATH, {
-    usuarios: [],      // {id, nombre, password, rol, empresa_id}
-    clientes: [],      // {id, empresa_id, nombre, telefono, direccion, tarifa, saldo_exigible, saldo, asignado_a, lat, lng}
-    llamadas: [],      // {id, empresa_id, cliente_id, usuario_id, fecha, monto_cobrado, resultado, observaciones}
-    ubicaciones: []    // {usuario_id, empresa_id, lat, lng, fecha}
-  });
-}
-function saveDB(db) { writeJSON(DB_PATH, db); }
-function loadEmpresas() { return readJSON(EMPRESAS_PATH, []); }
-function saveEmpresas(list) { writeJSON(EMPRESAS_PATH, list); }
-function nextId(list) { return list.length ? Math.max(...list.map(x => x.id || 0)) + 1 : 1; }
+const loadDB = () => readJSON(DB_PATH, { usuarios:[], clientes:[], llamadas:[], ubicaciones:[] });
+const saveDB = (db) => writeJSON(DB_PATH, db);
+const loadEmpresas = () => readJSON(EMPRESAS_PATH, []);
+const saveEmpresas = (e) => writeJSON(EMPRESAS_PATH, e);
+const nextId = (l) => l.length ? Math.max(...l.map(x => x.id||0))+1 : 1;
+const s = (v) => (v==null ? '' : String(v));
 
-// Convierte a string seguro (evita .trim() sobre números)
-const s = (v) => (v === null || v === undefined) ? '' : String(v);
-
-// ===== Seed mínimo =====
-(function seed() {
+// ===== Seed =====
+(function seed(){
   let empresas = loadEmpresas();
-  if (empresas.length === 0) {
-    empresas = [{ id: 1, nombre: 'Empresa Demo' }];
-    saveEmpresas(empresas);
-  }
-
+  if (!empresas.length) { empresas = [{ id:1, nombre:'Empresa Demo'}]; saveEmpresas(empresas); }
   const db = loadDB();
-  if (!db.usuarios.some(u => u.rol === 'superadmin')) {
-    db.usuarios.push({ id: 0, nombre: 'superadmin', password: 'admin123', rol: 'superadmin', empresa_id: null });
-  }
-  if (!db.usuarios.some(u => u.rol === 'admin' && u.empresa_id === 1)) {
-    db.usuarios.push({ id: 1, nombre: 'admin', password: 'admin123', rol: 'admin', empresa_id: 1 });
-  }
+  if (!db.usuarios.some(u=>u.rol==='superadmin')) db.usuarios.push({ id:0, nombre:'superadmin', password:'admin123', rol:'superadmin', empresa_id:null });
+  if (!db.usuarios.some(u=>u.rol==='admin' && u.empresa_id===1)) db.usuarios.push({ id:1, nombre:'admin', password:'admin123', rol:'admin', empresa_id:1 });
   saveDB(db);
 })();
 
-// ===== Helpers multi-tenant =====
-function getEmpresaIdFromReq(req) {
-  // Si superadmin “entra” a una empresa, llega x-empresa-id
+function getEmpresaIdFromReq(req){
   if (req.headers['x-empresa-id']) return Number(req.headers['x-empresa-id']);
-
-  // Si es admin/gestor, inferimos por su usuario
   const uid = req.headers['x-user-id'];
-  if (uid != null) {
+  if (uid!=null){
     const db = loadDB();
-    const u = db.usuarios.find(x => String(x.id) === String(uid));
-    if (u && u.empresa_id != null) return Number(u.empresa_id);
+    const u = db.usuarios.find(x=>String(x.id)===String(uid));
+    if (u && u.empresa_id!=null) return Number(u.empresa_id);
   }
   return null;
 }
 
-// ===== API: clave de maps (opcional) =====
+// ===== API Key para Maps =====
 app.get('/api-key', (req, res) => {
-  if (!MAPS_API_KEY) return res.status(500).json({ error: 'Maps_API_KEY no configurada' });
+  if (!MAPS_API_KEY) return res.status(500).json({ error:'Maps_API_KEY no configurada' });
   res.json({ key: MAPS_API_KEY });
 });
 
 // ===== Auth =====
-app.post('/login', (req, res) => {
+app.post('/login', (req,res)=>{
   const { usuario, password } = req.body || {};
   const db = loadDB();
-  const u = db.usuarios.find(x => x.nombre === usuario && x.password === password);
-  if (!u) return res.json({ status: 'error', mensaje: 'Usuario o contraseña incorrectos' });
-  return res.json({ status: 'ok', id: u.id, usuario: u.nombre, rol: u.rol, empresa_id: u.empresa_id ?? null });
+  const u = db.usuarios.find(x=>x.nombre===usuario && x.password===password);
+  if (!u) return res.json({ status:'error', mensaje:'Usuario o contraseña incorrectos' });
+  res.json({ status:'ok', id:u.id, usuario:u.nombre, rol:u.rol, empresa_id:u.empresa_id ?? null });
 });
 
-// ===== Empresas (solo superadmin) =====
-app.get('/empresas', (req, res) => {
-  if (String(req.headers['x-user-id']) !== '0') return res.status(403).json({ status: 'error', mensaje: 'Solo superadmin' });
+// ===== Empresas (superadmin) =====
+app.get('/empresas', (req,res)=>{
+  if (String(req.headers['x-user-id'])!=='0') return res.status(403).json({ status:'error', mensaje:'Solo superadmin' });
   res.json(loadEmpresas());
 });
-
-app.post('/empresas/crear', (req, res) => {
-  if (String(req.headers['x-user-id']) !== '0') return res.status(403).json({ status: 'error', mensaje: 'Solo superadmin' });
-
+app.post('/empresas/crear', (req,res)=>{
+  if (String(req.headers['x-user-id'])!=='0') return res.status(403).json({ status:'error', mensaje:'Solo superadmin' });
   const { nombre, admin_nombre, admin_password } = req.body || {};
-  if (!nombre || !admin_nombre || !admin_password) {
-    return res.status(400).json({ status: 'error', mensaje: 'Campos requeridos' });
-  }
+  if (!nombre || !admin_nombre || !admin_password) return res.status(400).json({ status:'error', mensaje:'Campos requeridos' });
 
   const empresas = loadEmpresas();
   const id = nextId(empresas);
@@ -136,177 +91,131 @@ app.post('/empresas/crear', (req, res) => {
   saveEmpresas(empresas);
 
   const db = loadDB();
-  db.usuarios.push({ id: nextId(db.usuarios), nombre: admin_nombre, password: admin_password, rol: 'admin', empresa_id: id });
+  db.usuarios.push({ id: nextId(db.usuarios), nombre: admin_nombre, password: admin_password, rol:'admin', empresa_id:id });
   saveDB(db);
-
-  res.json({ status: 'ok', mensaje: 'Empresa creada', empresa: { id, nombre } });
+  res.json({ status:'ok', mensaje:'Empresa creada', empresa:{ id, nombre } });
 });
 
 // ===== Usuarios (empresa) =====
-app.get('/usuarios', (req, res) => {
+app.get('/usuarios',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
   const db = loadDB();
-  const usuarios = db.usuarios.filter(u => u.empresa_id === empresaId && u.rol !== 'superadmin');
-  res.json(usuarios);
+  res.json(db.usuarios.filter(u=>u.empresa_id===empresaId && u.rol!=='superadmin'));
 });
-
-app.post('/usuarios', (req, res) => {
+app.post('/usuarios',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
   const { nombre, password } = req.body || {};
-  if (!nombre || !password) return res.status(400).json({ status: 'error', mensaje: 'nombre y password requeridos' });
-
+  if (!nombre || !password) return res.status(400).json({ status:'error', mensaje:'nombre y password requeridos' });
   const db = loadDB();
-  const existe = db.usuarios.find(u => u.empresa_id === empresaId && u.nombre === nombre);
-  if (existe) return res.json({ status: 'error', mensaje: 'Usuario ya existe en esta empresa' });
-
-  const nuevo = { id: nextId(db.usuarios), nombre, password, rol: 'gestor', empresa_id: empresaId };
-  db.usuarios.push(nuevo);
-  saveDB(db);
-
-  res.json({ status: 'ok', usuario: nuevo });
+  if (db.usuarios.find(u=>u.empresa_id===empresaId && u.nombre===nombre)) return res.json({ status:'error', mensaje:'Usuario ya existe' });
+  const nuevo = { id: nextId(db.usuarios), nombre, password, rol:'gestor', empresa_id:empresaId };
+  db.usuarios.push(nuevo); saveDB(db);
+  res.json({ status:'ok', usuario:nuevo });
 });
-
-app.post('/usuarios/eliminar', (req, res) => {
+app.post('/usuarios/eliminar',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
   const { id } = req.body || {};
   const db = loadDB();
   const before = db.usuarios.length;
-  db.usuarios = db.usuarios.filter(u => !(u.empresa_id === empresaId && u.id === Number(id)));
-  if (db.usuarios.length === before) return res.json({ status: 'error', mensaje: 'No encontrado' });
-  saveDB(db);
-
-  res.json({ status: 'ok', mensaje: 'Eliminado' });
+  db.usuarios = db.usuarios.filter(u=>!(u.empresa_id===empresaId && u.id===Number(id)));
+  if (db.usuarios.length===before) return res.json({ status:'error', mensaje:'No encontrado' });
+  saveDB(db); res.json({ status:'ok', mensaje:'Eliminado' });
 });
 
 // ===== Clientes =====
-app.get('/clientes', (req, res) => {
+app.get('/clientes',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
   const db = loadDB();
-  res.json(db.clientes.filter(c => c.empresa_id === empresaId));
+  res.json(db.clientes.filter(c=>c.empresa_id===empresaId));
 });
-
-app.get('/clientes/:usuarioId', (req, res) => {
+app.get('/clientes/:usuarioId',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
   const uid = Number(req.params.usuarioId);
   const db = loadDB();
-  const list = db.clientes.filter(c => c.empresa_id === empresaId && c.asignado_a === uid);
-  res.json(list);
+  res.json(db.clientes.filter(c=>c.empresa_id===empresaId && c.asignado_a===uid));
 });
-
-// Asignaciones (1×1 y MASIVA)
-app.post('/actualizar-clientes', (req, res) => {
+app.post('/actualizar-clientes',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
   const { clientes, clienteIds, asignado_a } = req.body || {};
   const db = loadDB();
 
-  // Masiva: clienteIds + asignado_a
-  if (Array.isArray(clienteIds)) {
-    let count = 0;
-    clienteIds.forEach(id => {
-      const idx = db.clientes.findIndex(x => x.empresa_id === empresaId && x.id === Number(id));
-      if (idx >= 0) { db.clientes[idx].asignado_a = (asignado_a == null ? null : Number(asignado_a)); count++; }
+  if (Array.isArray(clienteIds)){
+    let count=0;
+    clienteIds.forEach(id=>{
+      const i = db.clientes.findIndex(x=>x.empresa_id===empresaId && x.id===Number(id));
+      if (i>=0){ db.clientes[i].asignado_a = (asignado_a==null?null:Number(asignado_a)); count++; }
     });
-    saveDB(db);
-    return res.json({ status: 'ok', mensaje: `Asignados ${count} clientes` });
+    saveDB(db); return res.json({ status:'ok', mensaje:`Asignados ${count} clientes` });
   }
 
-  // 1×1: clientes: [{id, asignado_a}]
-  if (Array.isArray(clientes)) {
-    clientes.forEach(c => {
-      const idx = db.clientes.findIndex(x => x.empresa_id === empresaId && x.id === Number(c.id));
-      if (idx >= 0) db.clientes[idx].asignado_a = (c.asignado_a == null ? null : Number(c.asignado_a));
+  if (Array.isArray(clientes)){
+    clientes.forEach(c=>{
+      const i = db.clientes.findIndex(x=>x.empresa_id===empresaId && x.id===Number(c.id));
+      if (i>=0) db.clientes[i].asignado_a = (c.asignado_a==null?null:Number(c.asignado_a));
     });
-    saveDB(db);
-    return res.json({ status: 'ok', mensaje: 'Asignaciones guardadas' });
+    saveDB(db); return res.json({ status:'ok', mensaje:'Asignaciones guardadas' });
   }
 
-  return res.status(400).json({ status: 'error', mensaje: 'Payload inválido' });
+  res.status(400).json({ status:'error', mensaje:'Payload inválido' });
 });
-
-// Cargar clientes desde Excel (robusto)
-app.post('/cargar-clientes', async (req, res) => {
+app.post('/cargar-clientes', async (req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
 
   const { clientes } = req.body || {};
-  if (!Array.isArray(clientes) || clientes.length === 0) {
-    return res.status(400).json({ status: 'error', mensaje: 'Sin clientes' });
-  }
+  if (!Array.isArray(clientes) || !clientes.length) return res.status(400).json({ status:'error', mensaje:'Sin clientes' });
 
   const db = loadDB();
   let conCoords = 0;
-
-  for (const c of clientes) {
+  for (const c of clientes){
     const nuevo = {
       id: nextId(db.clientes),
       empresa_id: empresaId,
-      nombre:        s(c.nombre).trim(),
-      telefono:      s(c.telefono).trim(),
-      direccion:     s(c.direccion).trim(),
-      tarifa:        s(c.tarifa).trim(),
-      saldo_exigible:s(c.saldo_exigible).trim(),
-      saldo:         s(c.saldo).trim(),
-      asignado_a:    c.asignado_a ?? null,
-      lat: null, lng: null
+      nombre: s(c.nombre).trim(),
+      telefono: s(c.telefono).trim(),
+      direccion: s(c.direccion).trim(),
+      tarifa: s(c.tarifa).trim(),
+      saldo_exigible: s(c.saldo_exigible).trim(),
+      saldo: s(c.saldo).trim(),
+      asignado_a: c.asignado_a ?? null,
+      lat:null, lng:null
     };
-
-    // Geocodificación opcional con timeout (no cuelga el server)
-    if (MAPS_API_KEY && nuevo.direccion) {
-      try {
-        const url = 'https://maps.googleapis.com/maps/api/geocode/json';
-        const r = await axios.get(url, {
-          params: { address: nuevo.direccion, key: MAPS_API_KEY },
-          timeout: 5000,
-          validateStatus: () => true
+    if (MAPS_API_KEY && nuevo.direccion){
+      try{
+        const r = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+          params:{ address:nuevo.direccion, key:MAPS_API_KEY }, timeout:5000, validateStatus:()=>true
         });
-        if (r.data?.results?.[0]) {
-          const g = r.data.results[0].geometry.location;
-          nuevo.lat = g.lat; nuevo.lng = g.lng; conCoords++;
-        }
-      } catch (e) {
-        console.warn('Geocode falló:', e.message);
-      }
+        if (r.data?.results?.[0]){ const g=r.data.results[0].geometry.location; nuevo.lat=g.lat; nuevo.lng=g.lng; conCoords++; }
+      }catch(e){ console.warn('Geocode fallo:', e.message); }
     }
-
     db.clientes.push(nuevo);
   }
-
   saveDB(db);
-  res.json({ status: 'ok', mensaje: `Se cargaron ${clientes.length} clientes`, clientesConCoordenadas: conCoords });
+  res.json({ status:'ok', mensaje:`Se cargaron ${clientes.length} clientes`, clientesConCoordenadas: conCoords });
 });
-
-// Limpiar clientes de la empresa
-app.post('/limpiar-clientes', (req, res) => {
+app.post('/limpiar-clientes',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
   const db = loadDB();
   const before = db.clientes.length;
-  db.clientes = db.clientes.filter(c => c.empresa_id !== empresaId);
+  db.clientes = db.clientes.filter(c=>c.empresa_id!==empresaId);
   saveDB(db);
-
-  res.json({ status: 'ok', mensaje: `Eliminados ${before - db.clientes.length} clientes` });
+  res.json({ status:'ok', mensaje:`Eliminados ${before-db.clientes.length} clientes` });
 });
 
-// Llamadas (gestiones)
-app.post('/llamadas', (req, res) => {
+// ===== Llamadas =====
+app.post('/llamadas',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
 
   const { cliente_id, usuario_id, fecha, monto_cobrado, resultado, observaciones } = req.body || {};
   const db = loadDB();
-
   db.llamadas.push({
     id: nextId(db.llamadas),
     empresa_id: empresaId,
@@ -317,57 +226,96 @@ app.post('/llamadas', (req, res) => {
     resultado: resultado || '',
     observaciones: observaciones || ''
   });
-
   saveDB(db);
-  res.json({ status: 'ok', mensaje: 'Llamada registrada' });
+  res.json({ status:'ok', mensaje:'Llamada registrada' });
 });
-
-// Reporte por empresa (filtros opcionales)
-app.get('/reporte', (req, res) => {
+app.get('/reporte',(req,res)=>{
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
 
   const { desde, hasta, usuario_id, resultado } = req.query;
-
-  let start = null, end = null;
-  try {
-    if (desde) start = new Date(`${desde}T00:00:00`);
-    if (hasta) end   = new Date(`${hasta}T23:59:59`);
-  } catch (_) {}
+  let start=null, end=null;
+  try{ if (desde) start=new Date(`${desde}T00:00:00`); if (hasta) end=new Date(`${hasta}T23:59:59`);}catch{}
 
   const db = loadDB();
-  const usuariosIdx = {};
-  for (const u of db.usuarios) if (u.empresa_id === empresaId) usuariosIdx[u.id] = u;
-  const clientesIdx = {};
-  for (const c of db.clientes) if (c.empresa_id === empresaId) clientesIdx[c.id] = c;
+  const usuariosIdx = {}; db.usuarios.forEach(u=>{ if(u.empresa_id===empresaId) usuariosIdx[u.id]=u; });
+  const clientesIdx = {}; db.clientes.forEach(c=>{ if(c.empresa_id===empresaId) clientesIdx[c.id]=c; });
 
-  let llamadas = (db.llamadas || []).filter(l => Number(l.empresa_id) === Number(empresaId));
-  if (start) llamadas = llamadas.filter(l => new Date(`${l.fecha}T00:00:00`) >= start);
-  if (end)   llamadas = llamadas.filter(l => new Date(`${l.fecha}T23:59:59`) <= end);
-  if (usuario_id) llamadas = llamadas.filter(l => Number(l.usuario_id) === Number(usuario_id));
-  if (resultado)  llamadas = llamadas.filter(l => String(l.resultado||'').toLowerCase() === String(resultado).toLowerCase());
+  let llamadas = (db.llamadas||[]).filter(l=>Number(l.empresa_id)===Number(empresaId));
+  if (start) llamadas = llamadas.filter(l=> new Date(`${l.fecha}T00:00:00`) >= start);
+  if (end)   llamadas = llamadas.filter(l=> new Date(`${l.fecha}T23:59:59`) <= end);
+  if (usuario_id) llamadas = llamadas.filter(l=> Number(l.usuario_id)===Number(usuario_id));
+  if (resultado)  llamadas = llamadas.filter(l=> String(l.resultado||'').toLowerCase()===String(resultado).toLowerCase());
 
-  const filas = llamadas.map(l => {
+  const filas = llamadas.map(l=>{
     const u = usuariosIdx[l.usuario_id] || {};
     const c = clientesIdx[l.cliente_id] || {};
     return {
-      usuario_id: l.usuario_id,
-      usuario: u.nombre || `#${l.usuario_id}`,
-      cliente_id: l.cliente_id,
-      cliente: c.nombre || `#${l.cliente_id}`,
-      resultado: l.resultado || '',
-      monto_cobrado: Number(l.monto_cobrado || 0),
-      fecha: l.fecha,
-      observaciones: l.observaciones || '',
-      tarifa: c.tarifa || '',
-      saldo_exigible: c.saldo_exigible || '',
-      saldo: c.saldo || ''
+      usuario_id: l.usuario_id, usuario: u.nombre || `#${l.usuario_id}`,
+      cliente_id: l.cliente_id, cliente: c.nombre || `#${l.cliente_id}`,
+      resultado: l.resultado || '', monto_cobrado: Number(l.monto_cobrado||0),
+      fecha: l.fecha, observaciones: l.observaciones || '',
+      tarifa: c.tarifa || '', saldo_exigible: c.saldo_exigible || '', saldo: c.saldo || ''
     };
-  });
+  }).sort((a,b)=> (a.fecha<b.fecha?1:a.fecha>b.fecha?-1:0));
 
-  filas.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
   res.json(filas);
 });
 
+// ===== Ubicaciones (tracking de gestores) =====
+app.post('/ubicacion',(req,res)=>{
+  const empresaId = getEmpresaIdFromReq(req);
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
+
+  const { usuario_id, lat, lng, fecha } = req.body || {};
+  if (usuario_id==null || lat==null || lng==null) return res.status(400).json({ status:'error', mensaje:'usuario_id, lat, lng requeridos' });
+
+  const db = loadDB();
+  db.ubicaciones.push({
+    id: nextId(db.ubicaciones),
+    empresa_id: empresaId,
+    usuario_id: Number(usuario_id),
+    lat: Number(lat), lng: Number(lng),
+    fecha: fecha || new Date().toISOString()
+  });
+  saveDB(db);
+  res.json({ status:'ok' });
+});
+
+app.get('/ubicaciones/ultimas',(req,res)=>{
+  const empresaId = getEmpresaIdFromReq(req);
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
+
+  const db = loadDB();
+  const usuarios = db.usuarios.filter(u=>u.empresa_id===empresaId);
+  const byUser = {};
+  (db.ubicaciones||[]).filter(u=>Number(u.empresa_id)===Number(empresaId)).forEach(u=>{
+    const k=u.usuario_id;
+    if (!byUser[k] || new Date(u.fecha)>new Date(byUser[k].fecha)) byUser[k]=u;
+  });
+  const resp = Object.values(byUser).map(u=>{
+    const usu = usuarios.find(x=>x.id===u.usuario_id) || {};
+    return { usuario_id:u.usuario_id, usuario:usu.nombre||`#${u.usuario_id}`, lat:u.lat, lng:u.lng, fecha:u.fecha };
+  });
+  res.json(resp);
+});
+
+app.get('/ubicaciones',(req,res)=>{
+  const empresaId = getEmpresaIdFromReq(req);
+  if (empresaId==null) return res.status(403).json({ status:'error', mensaje:'Sin empresa activa' });
+
+  const { desde, hasta, usuario_id } = req.query || {};
+  let start = desde ? new Date(desde) : null;
+  let end   = hasta ? new Date(hasta)  : null;
+
+  const db = loadDB();
+  let lista = (db.ubicaciones||[]).filter(u=>Number(u.empresa_id)===Number(empresaId));
+  if (usuario_id) lista = lista.filter(u=>Number(u.usuario_id)===Number(usuario_id));
+  if (start) lista = lista.filter(u=> new Date(u.fecha)>=start);
+  if (end)   lista = lista.filter(u=> new Date(u.fecha)<=end);
+
+  res.json(lista.sort((a,b)=> new Date(b.fecha)-new Date(a.fecha)));
+});
+
 // ===== Start =====
-app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
+app.listen(PORT, ()=> console.log(`Servidor en puerto ${PORT}`));
