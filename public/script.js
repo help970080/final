@@ -1,6 +1,6 @@
 /* =========================================================
    public/script.js — multi-empresa estable y completo
-   (fechas locales para reporte de gestiones)
+   (fechas locales + headers corregidos)
 ========================================================= */
 
 let usuarioActual = null;
@@ -8,14 +8,24 @@ let esAdmin = false;
 let esSuperadmin = false;
 let empresaActivaId = null;
 
+/* ===== Utilidades ===== */
+
+// Enviar headers de autenticación.
+// x-empresa-id SOLO para superadmin o admin (evita cruces cuando entra un gestor).
 function withAuthHeaders(init = {}) {
   const u = JSON.parse(localStorage.getItem("user"));
   const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
+
   if (u?.id !== undefined) headers["x-user-id"] = u.id;
+
   const act = localStorage.getItem("empresaActivaId");
-  if (act) headers["x-empresa-id"] = act;
+  if (act && (u?.rol === "superadmin" || u?.rol === "admin")) {
+    headers["x-empresa-id"] = act;
+  }
+
   return { ...init, headers };
 }
+
 function toast(msg, type = "info", idHint = "floatingMessage") {
   const el = document.getElementById(idHint) || document.getElementById("floatingMessage");
   if (!el) return;
@@ -24,6 +34,7 @@ function toast(msg, type = "info", idHint = "floatingMessage") {
   el.classList.remove("hidden");
   setTimeout(() => el.classList.add("hidden"), 2600);
 }
+
 async function safeJson(res) {
   try {
     const ct = res.headers.get("content-type") || "";
@@ -35,7 +46,7 @@ async function safeJson(res) {
   }
 }
 
-/* ===== Fechas locales (evita desfase UTC en reporte) ===== */
+// Fecha local en formato YYYY-MM-DD (evita desfase por UTC)
 function hoyLocalYMD() {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -63,6 +74,8 @@ function login() {
   .then(data => {
     if (data.status === "ok") {
       localStorage.setItem("user", JSON.stringify(data));
+      // Si NO es superadmin, evita heredar empresaActivaId de sesiones previas
+      if (data.rol !== "superadmin") localStorage.removeItem("empresaActivaId");
       window.location.href = "/clientes.html";
     } else {
       if (msg) msg.textContent = data.mensaje || "Credenciales inválidas";
@@ -441,7 +454,7 @@ function registrarLlamada(btn, clienteId) {
     body: JSON.stringify({
       cliente_id: clienteId,
       usuario_id: usuarioActual.id,
-      fecha: hoyLocalYMD(), // <-- fecha local, no UTC
+      fecha: hoyLocalYMD(), // fecha local
       monto_cobrado: monto,
       resultado,
       observaciones
@@ -527,7 +540,7 @@ function exportarReporte() {
   XLSX.writeFile(wb, `reporte_${hoyLocalYMD()}.xlsx`);
 }
 
-/* ===== Mapa (placeholder opcional) ===== */
+/* ===== Mapa (placeholder opcional para evitar errores si no hay API Key) ===== */
 let mapInstance = null, directionsRendererInstance = null;
 function inicializarMapaManual() {
   const el = document.getElementById('mapa');
