@@ -18,7 +18,7 @@
   </header>
 
   <main class="container">
-    <!-- ==== Panel Superadmin: seleccionar empresa ==== -->
+    <!-- ==== Panel Superadmin: seleccionar / crear empresa ==== -->
     <section id="seccionEmpresas" class="admin-section-card hidden" style="margin-bottom:16px;">
       <h2>Empresas</h2>
       <div class="form-row">
@@ -29,6 +29,17 @@
         <button id="btnSalirEmpresa" class="button-secondary">Salir</button>
       </div>
       <p id="empresaActivaMsg" class="info"></p>
+
+      <hr style="margin:12px 0;">
+
+      <h3>Crear nueva empresa</h3>
+      <div class="form-row">
+        <input id="nuevaEmpresaNombre" type="text" placeholder="Nombre de la empresa" />
+        <input id="nuevaEmpresaAdmin" type="text" placeholder="Usuario admin (de la empresa)" />
+        <input id="nuevaEmpresaPass" type="password" placeholder="Contraseña admin" />
+        <button id="btnCrearEmpresa" class="button-success">➕ Crear Empresa</button>
+      </div>
+      <p id="empresaCreateMsg" class="info"></p>
     </section>
 
     <!-- ==== Bandeja del Gestor ==== -->
@@ -52,18 +63,6 @@
           </thead>
           <tbody></tbody>
         </table>
-      </div>
-    </section>
-
-    <!-- ==== Mapa (opcional, no bloquea) ==== -->
-    <section class="card">
-      <h2>Mapa de Clientes y Gestores</h2>
-      <div class="grid-2">
-        <div id="mapa" class="mapa"></div>
-        <div>
-          <p>Presiona el botón para cargar el mapa.</p>
-          <button id="btnRecargarMapa" onclick="inicializarMapaManual()" class="button-secondary">🗺️ Recargar Mapa</button>
-        </div>
       </div>
     </section>
 

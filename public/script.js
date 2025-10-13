@@ -1,5 +1,5 @@
 /* =========================================================
-   public/script.js — multi-empresa estable
+   public/script.js — multi-empresa estable y completo
 ========================================================= */
 
 let usuarioActual = null;
@@ -85,6 +85,7 @@ window.addEventListener("load", () => {
         poblarSelectorEmpresas();
         document.getElementById('btnEntrarEmpresa')?.addEventListener('click', activarEmpresaParaSuperadmin);
         document.getElementById('btnSalirEmpresa')?.addEventListener('click', salirDeEmpresaActiva);
+        document.getElementById('btnCrearEmpresa')?.addEventListener('click', crearEmpresaSuperadmin);
       }
     }
 
@@ -148,6 +149,44 @@ function salirDeEmpresaActiva() {
   const msg = document.getElementById('empresaActivaMsg');
   if (msg) { msg.className='info'; msg.textContent='Sin empresa activa.'; }
   location.reload();
+}
+function crearEmpresaSuperadmin() {
+  const nombre = document.getElementById('nuevaEmpresaNombre')?.value?.trim();
+  const adminNombre = document.getElementById('nuevaEmpresaAdmin')?.value?.trim();
+  const adminPass = document.getElementById('nuevaEmpresaPass')?.value?.trim();
+  const msg = document.getElementById('empresaCreateMsg');
+
+  if (!nombre || !adminNombre || !adminPass) {
+    if (msg) { msg.className = 'error'; msg.textContent = 'Completa todos los campos.'; }
+    return;
+  }
+
+  fetch('/empresas/crear', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-user-id': 0 },
+    body: JSON.stringify({ nombre, admin_nombre: adminNombre, admin_password: adminPass })
+  })
+  .then(safeJson)
+  .then(data => {
+    if (data.status !== 'ok') throw new Error(data.mensaje || 'Error al crear la empresa');
+
+    if (msg) { msg.className = 'success'; msg.textContent = `✅ ${data.mensaje}: #${data.empresa.id} - ${data.empresa.nombre}`; }
+
+    // Limpia campos
+    const n = document.getElementById('nuevaEmpresaNombre'); if (n) n.value = '';
+    const an = document.getElementById('nuevaEmpresaAdmin'); if (an) an.value = '';
+    const ap = document.getElementById('nuevaEmpresaPass'); if (ap) ap.value = '';
+
+    // Repoblar el selector, seleccionar la nueva y entrar
+    poblarSelectorEmpresas();
+    localStorage.setItem('empresaActivaId', String(data.empresa.id));
+    const m2 = document.getElementById('empresaActivaMsg');
+    if (m2) { m2.className = 'success'; m2.textContent = `Ahora administras la empresa #${data.empresa.id}`; }
+    setTimeout(() => location.reload(), 500);
+  })
+  .catch(err => {
+    if (msg) { msg.className = 'error'; msg.textContent = `❌ ${err.message}`; }
+  });
 }
 
 /* ===== Usuarios (admin) ===== */
@@ -473,12 +512,4 @@ function exportarReporte() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Reporte");
   XLSX.writeFile(wb, `reporte_${new Date().toISOString().slice(0,10)}.xlsx`);
-}
-
-/* ===== Mapa (opcional) ===== */
-let mapInstance = null, directionsRendererInstance = null;
-function inicializarMapaManual() {
-  // placeholder: evita errores si no hay Google Maps
-  const el = document.getElementById('mapa');
-  if (el && !el.dataset.inited) { el.dataset.inited = '1'; el.innerHTML = '<div style="padding:12px;">Mapa cargado (demo)</div>'; }
 }
