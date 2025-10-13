@@ -237,3 +237,37 @@ body.login{ display:grid; place-items:center; background:linear-gradient(180deg,
   input[type="text"], input[type="password"], input[type="number"], input[type="date"], select{ width:100% }
   .scroll table{ min-width:680px }
 }
+/* ==== Fix: que la columna "Acción" siempre sea visible (sticky right) ==== */
+.scroll{ position: relative; } /* necesario para sticky */
+
+#tablaClientes th:last-child,
+#tablaClientes td:last-child{
+  position: sticky;
+  right: 0;
+  background: #FFFFFF;                /* que no se transparente sobre celdas */
+  z-index: 2;                          /* por encima del resto */
+  box-shadow: -8px 0 12px rgba(2,6,23,.04); /* sutil separador a la izquierda */
+}
+
+/* Botón más compacto dentro de la columna Acción */
+#tablaClientes td:last-child button{
+  padding: 8px 10px;
+  white-space: nowrap;
+  min-width: 110px;
+}
+
+/* (Opcional) Compactar un poco inputs y selects para ganar espacio horizontal */
+#tablaClientes td .monto{ max-width: 130px; }
+#tablaClientes td .observaciones{ max-width: 220px; }
+#tablaClientes td .resultado{ max-width: 160px; }
+
+/* En pantallas muy pequeñas, permitir ancho completo de los controles */
+@media (max-width: 640px){
+  #tablaClientes td .monto,
+  #tablaClientes td .observaciones,
+  #tablaClientes td .resultado{
+    max-width: none;
+    width: 100%;
+  }
+}
+
