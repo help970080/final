@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Callback para cuando script.js inserte Google Maps con API key -->
   <script>
     function inicializarMapa() {
       if (typeof window.googleMapsApiLoadedCallback === 'function') {
@@ -14,15 +13,10 @@
       }
     }
   </script>
-
-  <!-- XLSX para importar Excel -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 </head>
 <body>
-
-<div id="floatingMessage" class="hidden">
-  Hecho con 🧡 por Leonardo Luna
-</div>
+<div id="floatingMessage" class="hidden">Hecho con 🧡</div>
 
 <header class="topbar">
   <h1>📞 Dashboard de Llamadas</h1>
@@ -34,9 +28,9 @@
 
 <main class="container">
 
-  <!-- ===== SUPERADMIN: alta + “entrar como empresa” ===== -->
-  <section id="seccionEmpresas" class="seccion-card hidden" style="margin-bottom:16px;">
-    <h2>🏢 Alta de Empresas (Superadmin)</h2>
+  <!-- Superadmin: empresas -->
+  <section id="seccionEmpresas" class="seccion-card hidden">
+    <h2>🏢 Empresas (Superadmin)</h2>
 
     <div class="form-row">
       <input id="empresaNombre" placeholder="Nombre de la empresa" />
@@ -44,7 +38,6 @@
       <input id="empresaAdminPassword" type="password" placeholder="Contraseña admin" />
       <button onclick="crearEmpresa()" class="button-success">Crear Empresa</button>
     </div>
-
     <p id="empresasMensaje" class="info"></p>
 
     <div style="margin-top:12px">
@@ -55,9 +48,7 @@
     <div style="margin-top:16px; border-top:1px solid #ddd; padding-top:12px;">
       <h3>👁️ Entrar como empresa</h3>
       <div class="form-row">
-        <select id="empresaActivaSelect">
-          <option value="">-- Selecciona empresa --</option>
-        </select>
+        <select id="empresaActivaSelect"><option value="">-- Selecciona empresa --</option></select>
         <button class="button-purple" onclick="activarEmpresaParaSuperadmin()">Entrar</button>
         <button class="button-danger" onclick="salirDeEmpresaActiva()">Salir</button>
       </div>
@@ -65,86 +56,17 @@
     </div>
   </section>
 
-  <!-- ===== Panel Administración ===== -->
+  <!-- Admin -->
   <section id="seccionAdmin" class="hidden seccion-card">
     <h2>Panel de Administración</h2>
 
-    <div class="kpi-section-card">
-      <h3>📊 Estadísticas Generales (KPIs)</h3>
-      <div class="kpi-grid">
-        <div class="kpi-card"><h4>Clientes Totales</h4><p id="kpiClientesTotales" class="kpi-value">...</p></div>
-        <div class="kpi-card"><h4>Clientes Asignados</h4><p id="kpiClientesAsignados" class="kpi-value">...</p></div>
-        <div class="kpi-card"><h4>Pendientes de Asignar</h4><p id="kpiClientesPendientes" class="kpi-value">...</p></div>
-        <div class="kpi-card"><h4>Llamadas Registradas</h4><p id="kpiLlamadasTotales" class="kpi-value">...</p></div>
-        <div class="kpi-card"><h4>Monto Total Cobrado</h4><p id="kpiMontoCobrado" class="kpi-value">...</p></div>
-        <div class="kpi-card"><h4>Efectividad Llamadas (%)</h4><p id="kpiEfectividadLlamadas" class="kpi-value">...</p></div>
-        <div class="kpi-card"><h4>Clientes Procesados Hoy</h4><p id="kpiClientesProcesadosHoy" class="kpi-value">...</p></div>
-      </div>
-      <button onclick="cargarKPIs()" class="kpi-update-button">Actualizar KPIs</button>
-    </div>
-
-    <!-- Rendimiento + fecha de corte para KPIs -->
-    <div class="kpi-section-card kpi-performance-background">
-      <h3>📈 Rendimiento de Gestores (vs Objetivo)</h3>
-      <div class="form-row" style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
-        <label for="fechaInicioBonos" style="white-space: nowrap;">Fecha Inicio Periodo:</label>
-        <input type="date" id="fechaInicioBonos" style="flex-grow: 1; min-width: 150px;">
-        <button onclick="cargarKPIsConFecha()" class="button-primary" style="flex-shrink: 0;">Aplicar Fecha</button>
-      </div>
-      <div style="max-height: 400px; overflow-y: auto;">
-        <table id="tablaRendimientoGestores">
-          <thead>
-            <tr>
-              <th>Gestor</th>
-              <th>Monto Cobrado</th>
-              <th>Efectividad (%)</th>
-              <th>Total Llamadas</th>
-              <th>Objetivo ($)</th>
-              <th>Avance (%)</th>
-              <th>Semáforo</th>
-              <th>Desde</th>
-              <th colspan="2"></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <button onclick="cargarKPIsConFecha()" class="kpi-update-button kpi-performance-button">Actualizar Rendimiento</button>
-    </div>
-
-    <!-- Objetivos por gestor -->
-    <div class="admin-section-card">
-      <h3>🎯 Objetivos por Gestor (Admin)</h3>
-      <p class="hint">
-        Define un <strong>monto objetivo</strong> por gestor. El avance se mide desde la <em>Fecha Inicio Periodo</em> (arriba).
-        Semáforo: <span style="color:#d32f2f;">Rojo &lt; 50%</span> · <span style="color:#f9a825;">Amarillo 50–79%</span> · <span style="color:#fb8c00;">Naranja 80–99%</span> · <span style="color:#2e7d32;">Verde ≥ 100%</span>
-      </p>
-      <div style="max-height: 400px; overflow-y: auto;">
-        <table id="tablaObjetivos">
-          <thead>
-            <tr>
-              <th>Gestor</th>
-              <th>Objetivo ($)</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody><!-- se rellena por script.js --></tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Subir Excel -->
     <div class="admin-section-card">
       <h3>📤 Subir Clientes desde Excel</h3>
       <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="procesarArchivo(event)" />
       <p id="mensajeExcel" class="info"></p>
       <button onclick="limpiarClientes()" class="button-danger">🧹 Limpiar Todos los Clientes</button>
-      <p class="hint">
-        Encabezados sugeridos: <em>Nombre, Teléfono, Dirección, Tarifa, Saldo Exigible, Saldo, AsignadoA</em> (se aceptan variantes).
-      </p>
     </div>
 
-    <!-- Usuarios -->
     <div class="admin-section-card">
       <h3>👥 Gestionar Usuarios</h3>
       <div class="form-row">
@@ -152,46 +74,29 @@
         <input type="password" id="nuevoUsuarioPassword" placeholder="Contraseña" required />
         <button onclick="agregarUsuario()" class="button-success">➕ Agregar Usuario</button>
       </div>
-      <p class="admin-message"></p>
-
       <div style="max-height: 350px; overflow-y: auto;">
         <table id="tablaUsuarios">
-          <thead>
-            <tr><th>ID</th><th>Nombre</th><th>Acción</th></tr>
-          </thead>
+          <thead><tr><th>ID</th><th>Nombre</th><th>Acción</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
     </div>
   </section>
 
-  <!-- ===== Asignación (admin/superadmin con empresa activa) ===== -->
+  <!-- Asignación -->
   <section id="seccionAsignacion" class="hidden seccion-card">
-    <h2>📌 Asignación de Clientes (Clientes no asignados)</h2>
+    <h2>📌 Asignación de Clientes</h2>
     <div class="form-row">
       <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" />
-      <button onclick="guardarAsignaciones()" class="button-primary">💾 Guardar Asignaciones Individuales</button>
+      <button onclick="guardarAsignaciones()" class="button-primary">💾 Guardar</button>
     </div>
-
-    <div class="mass-assign-section">
-      <h3>Asignación Masiva</h3>
-      <select id="massAssignUserSelect"><option value="">-- Seleccionar usuario --</option></select>
-      <button onclick="asignarClientesMasivamente()" class="button-purple">🚀 Asignar Clientes Seleccionados</button>
-      <p id="massAssignMessage" class="info"></p>
-    </div>
-
     <div style="max-height: 500px; overflow-y: auto;">
       <table id="tablaAsignarClientes">
         <thead>
           <tr>
             <th><input type="checkbox" id="selectAllClients" onclick="toggleAllClients(this)"></th>
-            <th>Cliente</th>
-            <th>Teléfono</th>
-            <th>Dirección</th>
-            <th>Tarifa</th>
-            <th>Saldo Exigible</th>
-            <th>Saldo</th>
-            <th>Usuario Asignado</th>
+            <th>Cliente</th><th>Teléfono</th><th>Dirección</th>
+            <th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th><th>Usuario Asignado</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -199,23 +104,16 @@
     </div>
   </section>
 
-  <!-- ===== Tabla de trabajo (gestor) ===== -->
+  <!-- Gestor -->
   <section class="seccion-card">
     <h2>Mis Clientes Asignados</h2>
     <div style="max-height: 500px; overflow-y: auto;">
       <table id="tablaClientes">
         <thead>
           <tr>
-            <th>Cliente</th>
-            <th>Teléfono</th>
-            <th>Dirección</th>
-            <th>Tarifa</th>
-            <th>Saldo Exigible</th>
-            <th>Saldo</th>
-            <th>Monto Cobrado</th>
-            <th>Resultado</th>
-            <th>Observaciones</th>
-            <th>Acción</th>
+            <th>Cliente</th><th>Teléfono</th><th>Dirección</th>
+            <th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th>
+            <th>Monto Cobrado</th><th>Resultado</th><th>Observaciones</th><th>Acción</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -223,49 +121,19 @@
     </div>
   </section>
 
-  <!-- ===== Mapa ===== -->
+  <!-- Mapa -->
   <section class="seccion-card">
     <h2>Mapa de Clientes y Gestores</h2>
     <div class="map-container">
       <div id="mapa"></div>
       <div id="info-ruta">
         <p>Presiona el botón para cargar el mapa.</p>
-        <button onclick="inicializarMapaManual()" class="button-map">🗺️ Recargar Mapa / Ubicaciones</button>
+        <button onclick="inicializarMapaManual()" class="button-map">🗺️ Recargar Mapa</button>
       </div>
     </div>
   </section>
 
-  <!-- ===== Reporte (si lo usas) ===== -->
-  <section class="seccion-card">
-    <h2>Reporte General</h2>
-    <div class="form-row">
-      <button onclick="cargarReporte()" class="button-report">🔄 Mostrar Todos los Registros</button>
-      <button onclick="exportarReporte()" class="button-export">📄 Exportar a Excel</button>
-    </div>
-    <p class="report-message"></p>
-
-    <div style="max-height: 500px; overflow-y: auto;">
-      <table id="tablaReporte">
-        <thead>
-          <tr>
-            <th>Usuario</th>
-            <th>Cliente</th>
-            <th>Resultado</th>
-            <th>Monto Cobrado</th>
-            <th>Fecha</th>
-            <th>Observaciones</th>
-            <th>Tarifa</th>
-            <th>Saldo Exigible</th>
-            <th>Saldo</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
   <p style="margin: 16px 0;"><a href="/">← Volver al inicio</a></p>
-
 </main>
 
 <script src="script.js"></script>
