@@ -2,172 +2,171 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Clientes Asignados</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="style.css" />
-
-  <script>
-    function inicializarMapa() {
-      if (typeof window.googleMapsApiLoadedCallback === 'function') {
-        window.googleMapsApiLoadedCallback();
-      }
-    }
-  </script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Dashboard de Llamadas</title>
+  <link rel="stylesheet" href="/style.css"/>
+  <!-- XLSX para importar/exportar Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-<div id="floatingMessage" class="hidden">Hecho con 🧡</div>
-
-<header class="topbar">
-  <h1>📞 Dashboard de Llamadas</h1>
-  <div class="userbar">
-    <span>Bienvenido, <strong id="nombreUsuario"></strong></span>
-    <button onclick="cerrarSesion()" class="button-danger">🔒 Cerrar Sesión</button>
-  </div>
-</header>
-
-<main class="container">
-
-  <!-- Superadmin: empresas -->
-  <section id="seccionEmpresas" class="seccion-card hidden">
-    <h2>🏢 Empresas (Superadmin)</h2>
-
-    <div class="form-row">
-      <input id="empresaNombre" placeholder="Nombre de la empresa" />
-      <input id="empresaAdminNombre" placeholder="Usuario admin" />
-      <input id="empresaAdminPassword" type="password" placeholder="Contraseña admin" />
-      <button onclick="crearEmpresa()" class="button-success">Crear Empresa</button>
+  <header class="topbar">
+    <h1>📞 Dashboard de Llamadas</h1>
+    <div class="userbar">
+      <span>Bienvenido, <strong id="nombreUsuario">-</strong></span>
+      <button class="button-danger" onclick="cerrarSesion()">🔒 Cerrar Sesión</button>
     </div>
-    <p id="empresasMensaje" class="info"></p>
+  </header>
 
-    <div style="margin-top:12px">
-      <button onclick="listarEmpresas()" class="button-primary">Listar Empresas</button>
-      <ul id="listaEmpresas"></ul>
-    </div>
-
-    <div style="margin-top:16px; border-top:1px solid #ddd; padding-top:12px;">
-      <h3>👁️ Entrar como empresa</h3>
+  <main class="container">
+    <!-- ==== Panel Superadmin: seleccionar empresa ==== -->
+    <section id="seccionEmpresas" class="admin-section-card hidden" style="margin-bottom:16px;">
+      <h2>Empresas</h2>
       <div class="form-row">
-        <select id="empresaActivaSelect"><option value="">-- Selecciona empresa --</option></select>
-        <button class="button-purple" onclick="activarEmpresaParaSuperadmin()">Entrar</button>
-        <button class="button-danger" onclick="salirDeEmpresaActiva()">Salir</button>
+        <select id="empresaActivaSelect">
+          <option value="">-- Selecciona empresa --</option>
+        </select>
+        <button id="btnEntrarEmpresa" class="button-primary">Entrar</button>
+        <button id="btnSalirEmpresa" class="button-secondary">Salir</button>
       </div>
       <p id="empresaActivaMsg" class="info"></p>
-    </div>
-  </section>
+    </section>
 
-  <!-- Admin -->
-  <section id="seccionAdmin" class="hidden seccion-card">
-    <h2>Panel de Administración</h2>
-
-    <div class="admin-section-card">
-      <h3>📤 Subir Clientes desde Excel</h3>
-      <input type="file" id="excelFile" accept=".xlsx, .xls, .csv" onchange="procesarArchivo(event)" />
-      <p id="mensajeExcel" class="info"></p>
-      <button onclick="limpiarClientes()" class="button-danger">🧹 Limpiar Todos los Clientes</button>
-    </div>
-
-    <div class="admin-section-card">
-      <h3>👥 Gestionar Usuarios</h3>
-      <div class="form-row">
-        <input type="text" id="nuevoUsuarioNombre" placeholder="Nombre de usuario" required />
-        <input type="password" id="nuevoUsuarioPassword" placeholder="Contraseña" required />
-        <button onclick="agregarUsuario()" class="button-success">➕ Agregar Usuario</button>
-      </div>
-      <div style="max-height: 350px; overflow-y: auto;">
-        <table id="tablaUsuarios">
-          <thead><tr><th>ID</th><th>Nombre</th><th>Acción</th></tr></thead>
+    <!-- ==== Bandeja del Gestor ==== -->
+    <section class="card">
+      <h2>Mis Clientes Asignados</h2>
+      <div class="scroll">
+        <table id="tablaClientes">
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Teléfono</th>
+              <th>Dirección</th>
+              <th>Tarifa</th>
+              <th>Saldo Exigible</th>
+              <th>Saldo</th>
+              <th>Monto Cobrado</th>
+              <th>Resultado</th>
+              <th>Observaciones</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
           <tbody></tbody>
         </table>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Asignación -->
-  <section id="seccionAsignacion" class="hidden seccion-card">
-    <h2>📌 Asignación de Clientes</h2>
-
-    <div class="form-row" style="gap:8px; flex-wrap: wrap;">
-      <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()" />
-      <button onclick="guardarAsignaciones()" class="button-primary">💾 Guardar (1 x 1)</button>
-
-      <select id="massAssignUserSelect">
-        <option value="">-- Seleccionar usuario --</option>
-      </select>
-      <button onclick="asignarClientesMasivamente()" class="button-purple">🚀 Asignar seleccionados</button>
-      <span id="massAssignMessage" class="info"></span>
-    </div>
-
-    <div style="max-height: 500px; overflow-y: auto;">
-      <table id="tablaAsignarClientes">
-        <thead>
-          <tr>
-            <th><input type="checkbox" id="selectAllClients" onclick="toggleAllClients(this)"></th>
-            <th>Cliente</th><th>Teléfono</th><th>Dirección</th>
-            <th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th><th>Usuario Asignado</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- Gestor -->
-  <section class="seccion-card">
-    <h2>Mis Clientes Asignados</h2>
-    <div style="max-height: 500px; overflow-y: auto;">
-      <table id="tablaClientes">
-        <thead>
-          <tr>
-            <th>Cliente</th><th>Teléfono</th><th>Dirección</th>
-            <th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th>
-            <th>Monto Cobrado</th><th>Resultado</th><th>Observaciones</th><th>Acción</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- Reporte Admin -->
-  <section id="seccionReporte" class="seccion-card hidden">
-    <h2>📄 Reporte de Gestiones</h2>
-    <div class="form-row" style="gap:8px; flex-wrap: wrap;">
-      <label>Desde: <input type="date" id="repDesde"></label>
-      <label>Hasta: <input type="date" id="repHasta"></label>
-      <button class="button-primary" onclick="cargarReporte()">🔄 Mostrar</button>
-      <button class="button-export" onclick="exportarReporte()">📥 Exportar a Excel</button>
-      <span class="report-message"></span>
-    </div>
-    <div style="max-height: 500px; overflow-y: auto;">
-      <table id="tablaReporte">
-        <thead>
-          <tr>
-            <th>Usuario</th><th>Cliente</th><th>Resultado</th>
-            <th>Monto Cobrado</th><th>Fecha</th><th>Observaciones</th>
-            <th>Tarifa</th><th>Saldo Exigible</th><th>Saldo</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <!-- Mapa -->
-  <section class="seccion-card">
-    <h2>Mapa de Clientes y Gestores</h2>
-    <div class="map-container">
-      <div id="mapa"></div>
-      <div id="info-ruta">
-        <p>Presiona el botón para cargar el mapa.</p>
-        <button onclick="inicializarMapaManual()" class="button-map">🗺️ Recargar Mapa</button>
+    <!-- ==== Mapa (opcional, no bloquea) ==== -->
+    <section class="card">
+      <h2>Mapa de Clientes y Gestores</h2>
+      <div class="grid-2">
+        <div id="mapa" class="mapa"></div>
+        <div>
+          <p>Presiona el botón para cargar el mapa.</p>
+          <button id="btnRecargarMapa" onclick="inicializarMapaManual()" class="button-secondary">🗺️ Recargar Mapa</button>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <p style="margin: 16px 0;"><a href="/">← Volver al inicio</a></p>
-</main>
+    <!-- ==== Panel de Administración ==== -->
+    <section id="seccionAdmin" class="admin-section-card hidden">
+      <h2>Panel de Administración</h2>
 
-<script src="script.js"></script>
+      <!-- Subir clientes -->
+      <div class="card">
+        <h3>📥 Subir Clientes desde Excel</h3>
+        <input type="file" id="archivoExcel" accept=".xlsx,.xls" onchange="procesarArchivo(event)"/>
+        <p id="mensajeExcel" class="info"></p>
+        <div style="margin-top:8px;">
+          <button class="button-danger" onclick="limpiarClientes()">🧹 Limpiar Todos los Clientes</button>
+        </div>
+      </div>
+
+      <!-- Gestión de Usuarios -->
+      <div class="card">
+        <h3>👥 Gestionar Usuarios</h3>
+        <div class="form-row">
+          <input type="text" id="nuevoUsuarioNombre" placeholder="Nombre de usuario"/>
+          <input type="password" id="nuevoUsuarioPassword" placeholder="Contraseña"/>
+          <button class="button-success" onclick="agregarUsuario()">➕ Agregar Usuario</button>
+        </div>
+        <div class="scroll">
+          <table id="tablaUsuarios">
+            <thead><tr><th>ID</th><th>Nombre</th><th>Acción</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Asignación de Clientes -->
+      <div id="seccionAsignacion" class="card">
+        <h3>📌 Asignación de Clientes</h3>
+        <div class="form-row">
+          <input type="text" id="filtroCliente" placeholder="Buscar cliente..." oninput="filtrarClientes()"/>
+          <div class="right">
+            <button id="btnGuardarUnoAUno" class="button-primary" onclick="guardarAsignaciones()">💾 Guardar (1 x 1)</button>
+          </div>
+        </div>
+
+        <!-- Controles masivos -->
+        <div class="form-row">
+          <select id="massAssignUserSelect"><option value="">-- Seleccionar usuario --</option></select>
+          <button id="massAssignBtn" class="button-purple">🚀 Asignar Clientes Seleccionados</button>
+        </div>
+        <p id="massAssignMessage" class="info"></p>
+
+        <div class="scroll">
+          <table id="tablaAsignarClientes">
+            <thead>
+              <tr>
+                <th><input type="checkbox" onclick="toggleAllClients(this)"/></th>
+                <th>Cliente</th>
+                <th>Teléfono</th>
+                <th>Dirección</th>
+                <th>Tarifa</th>
+                <th>Saldo Exigible</th>
+                <th>Saldo</th>
+                <th>Usuario Asignado</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Reporte -->
+      <div class="card">
+        <h3>📊 Reporte de Gestiones</h3>
+        <div class="form-row">
+          <label>Desde: <input type="date" id="repDesde"></label>
+          <label>Hasta: <input type="date" id="repHasta"></label>
+          <button id="btnCargarReporte" class="button-secondary">🔄 Mostrar</button>
+          <button id="btnExportarReporte" class="button-success">📄 Exportar Excel</button>
+        </div>
+        <p id="reporteMsg" class="info"></p>
+        <div class="scroll" style="max-height:420px;">
+          <table id="tablaReporte">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Cliente</th>
+                <th>Resultado</th>
+                <th>Monto Cobrado</th>
+                <th>Fecha</th>
+                <th>Observaciones</th>
+                <th>Tarifa</th>
+                <th>Saldo Exigible</th>
+                <th>Saldo</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <div id="floatingMessage" class="toast hidden"></div>
+  <script src="/script.js"></script>
 </body>
 </html>

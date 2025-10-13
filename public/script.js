@@ -1,26 +1,12 @@
 /* =========================================================
-   public/script.js — versión estable y simple
-   Funciones:
-   - Login / Logout
-   - Subir clientes (Excel) por empresa
-   - Gestionar usuarios (agregar / eliminar)
-   - Asignación 1×1 y MASIVA de clientes a gestores
-   - Bandeja de gestor (registrar llamadas)
-   - Reporte de gestiones + Exportar Excel
-   Notas:
-   - Requiere endpoints: /login, /usuarios, /usuarios/eliminar, /clientes,
-     /clientes/:uid, /cargar-clientes, /limpiar-clientes,
-     /actualizar-clientes, /llamadas, /reporte
-   - Usa encabezados multi-tenant: x-user-id y x-empresa-id
+   public/script.js — multi-empresa estable
 ========================================================= */
 
-/* ====== Estado global ====== */
 let usuarioActual = null;
 let esAdmin = false;
 let esSuperadmin = false;
 let empresaActivaId = null;
 
-/* ====== Utilidades ====== */
 function withAuthHeaders(init = {}) {
   const u = JSON.parse(localStorage.getItem("user"));
   const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
@@ -29,17 +15,14 @@ function withAuthHeaders(init = {}) {
   if (act) headers["x-empresa-id"] = act;
   return { ...init, headers };
 }
-
-function toast(msg, type = "info", idHint = "mensajeExcel") {
+function toast(msg, type = "info", idHint = "floatingMessage") {
   const el = document.getElementById(idHint) || document.getElementById("floatingMessage");
   if (!el) return;
-  el.className = type;     // usa .info / .success / .error si las tienes
+  el.className = `toast ${type}`;
   el.textContent = msg;
   el.classList.remove("hidden");
-  setTimeout(() => el.classList.add("hidden"), 2500);
+  setTimeout(() => el.classList.add("hidden"), 2600);
 }
-
-// Parseo seguro (si vuelve HTML por 502/403 no truena)
 async function safeJson(res) {
   try {
     const ct = res.headers.get("content-type") || "";
@@ -51,7 +34,7 @@ async function safeJson(res) {
   }
 }
 
-/* ====== Login / Logout ====== */
+/* ===== Login / Logout ===== */
 function login() {
   const usuario = document.getElementById("usuario")?.value?.trim();
   const password = document.getElementById("password")?.value?.trim();
@@ -81,7 +64,7 @@ function cerrarSesion() {
   window.location.href = "/";
 }
 
-/* ====== Inicio ====== */
+/* ===== Boot ===== */
 window.addEventListener("load", () => {
   const userData = JSON.parse(localStorage.getItem("user"));
   if (!userData && window.location.pathname.includes("clientes.html")) { window.location.href = "/"; return; }
@@ -94,31 +77,84 @@ window.addEventListener("load", () => {
     const span = document.getElementById("nombreUsuario");
     if (span && usuarioActual?.usuario) span.textContent = usuarioActual.usuario;
 
-    // Admin o Superadmin actuando como empresa
+    // Superadmin: panel de empresas
+    if (esSuperadmin) {
+      const sec = document.getElementById("seccionEmpresas");
+      if (sec) {
+        sec.classList.remove("hidden");
+        poblarSelectorEmpresas();
+        document.getElementById('btnEntrarEmpresa')?.addEventListener('click', activarEmpresaParaSuperadmin);
+        document.getElementById('btnSalirEmpresa')?.addEventListener('click', salirDeEmpresaActiva);
+      }
+    }
+
     const actingAsEmpresa = (esSuperadmin && !!empresaActivaId);
     if (esAdmin || actingAsEmpresa) {
       document.getElementById("seccionAdmin")?.classList.remove("hidden");
       document.getElementById("seccionAsignacion")?.classList.remove("hidden");
       cargarUsuarios();
-      cargarTodosLosClientes(); // para la tabla de asignación
-      // listeners UI existentes en tu HTML
-      const massBtn = document.getElementById("massAssignBtn");
-      if (massBtn) massBtn.addEventListener("click", asignarClientesMasivamente);
+      cargarTodosLosClientes();
+
+      document.getElementById("massAssignBtn")?.addEventListener("click", asignarClientesMasivamente);
+      document.getElementById("btnCargarReporte")?.addEventListener("click", cargarReporte);
+      document.getElementById("btnExportarReporte")?.addEventListener("click", exportarReporte);
+
+      // fechas por defecto
+      const d = new Date(); const first = new Date(d.getFullYear(), d.getMonth(), 1);
+      const fmt = x => `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+      const repDesde = document.getElementById("repDesde");
+      const repHasta = document.getElementById("repHasta");
+      if (repDesde) repDesde.value = fmt(first);
+      if (repHasta) repHasta.value = fmt(d);
     }
 
-    // Gestor: su bandeja
+    // Gestor
     if (!esSuperadmin && usuarioActual?.id !== undefined) {
       cargarClientes(usuarioActual.id);
     }
   }
 });
 
-/* ====== Admin: Usuarios ====== */
+/* ===== Superadmin: empresas ===== */
+function poblarSelectorEmpresas() {
+  const select = document.getElementById('empresaActivaSelect');
+  const msg = document.getElementById('empresaActivaMsg');
+  if (!select) return;
+
+  fetch('/empresas', { method: 'GET', headers: { 'Content-Type': 'application/json', 'x-user-id': 0 } })
+  .then(r => r.json())
+  .then(empresas => {
+    select.innerHTML = '<option value="">-- Selecciona empresa --</option>';
+    (empresas || []).forEach(e => {
+      const o = document.createElement('option');
+      o.value = e.id; o.textContent = `#${e.id} - ${e.nombre}`;
+      select.appendChild(o);
+    });
+    const actual = localStorage.getItem('empresaActivaId');
+    if (actual) { select.value = String(actual); if (msg) { msg.className='info'; msg.textContent = `Empresa activa: #${actual}`; } }
+  })
+  .catch(err => { if (msg) { msg.className='error'; msg.textContent = `Error: ${err.message}`; } });
+}
+function activarEmpresaParaSuperadmin() {
+  const sel = document.getElementById('empresaActivaSelect');
+  const msg = document.getElementById('empresaActivaMsg');
+  if (!sel?.value) { if (msg) { msg.className='error'; msg.textContent='Selecciona una empresa.'; } return; }
+  localStorage.setItem('empresaActivaId', sel.value);
+  if (msg) { msg.className='success'; msg.textContent=`Ahora administras la empresa #${sel.value}`; }
+  location.reload();
+}
+function salirDeEmpresaActiva() {
+  localStorage.removeItem('empresaActivaId');
+  const msg = document.getElementById('empresaActivaMsg');
+  if (msg) { msg.className='info'; msg.textContent='Sin empresa activa.'; }
+  location.reload();
+}
+
+/* ===== Usuarios (admin) ===== */
 function cargarUsuarios() {
   fetch("/usuarios", withAuthHeaders())
     .then(r => r.json())
     .then(usuarios => {
-      // Tabla
       const tbody = document.querySelector("#tablaUsuarios tbody");
       if (tbody) {
         tbody.innerHTML = "";
@@ -128,25 +164,22 @@ function cargarUsuarios() {
           tbody.appendChild(tr);
         });
       }
-      // Select de masiva
       const sel = document.getElementById("massAssignUserSelect");
       if (sel) {
         sel.innerHTML = '<option value="">-- Seleccionar usuario --</option>';
         (usuarios || []).forEach(u => {
           const o = document.createElement("option");
-          o.value = String(u.id);   // valor = ID (requerido por backend)
-          o.textContent = u.nombre; // etiqueta
+          o.value = String(u.id);
+          o.textContent = u.nombre;
           sel.appendChild(o);
         });
       }
     });
 }
-
 function agregarUsuario() {
   const nombre = document.getElementById("nuevoUsuarioNombre")?.value;
   const password = document.getElementById("nuevoUsuarioPassword")?.value;
   if (!nombre || !password) return;
-
   fetch("/usuarios", withAuthHeaders({ method: "POST", body: JSON.stringify({ nombre, password }) }))
     .then(r => r.json())
     .then(d => {
@@ -160,14 +193,13 @@ function agregarUsuario() {
       }
     });
 }
-
 function eliminarUsuario(id) {
   if (!confirm("¿Eliminar usuario?")) return;
   fetch("/usuarios/eliminar", withAuthHeaders({ method: "POST", body: JSON.stringify({ id }) }))
     .then(() => cargarUsuarios());
 }
 
-/* ====== Admin: Clientes (lista sin asignar) ====== */
+/* ===== Clientes (admin) ===== */
 function cargarTodosLosClientes() {
   fetch("/clientes", withAuthHeaders())
     .then(res => res.json())
@@ -177,7 +209,6 @@ function cargarTodosLosClientes() {
       if (!tbody) return;
       tbody.innerHTML = "";
 
-      // Carga usuarios para options 1×1
       fetch("/usuarios", withAuthHeaders())
         .then(r => r.json())
         .then(users => {
@@ -202,30 +233,27 @@ function cargarTodosLosClientes() {
         });
     });
 }
-
-/* ====== Asignación 1×1 (ya existía) ====== */
 function guardarAsignaciones() {
   const actualizaciones = Array.from(document.querySelectorAll("#tablaAsignarClientes .usuarioSelect"))
     .map(s => ({ id: parseInt(s.dataset.id), asignado_a: s.value ? parseInt(s.value) : null }));
-
   fetch("/actualizar-clientes", withAuthHeaders({ method: "POST", body: JSON.stringify({ clientes: actualizaciones }) }))
     .then(r => r.json())
     .then(() => { toast("Asignaciones guardadas", "success"); cargarTodosLosClientes(); });
 }
 
-/* ====== Asignación MASIVA ====== */
+/* ===== Asignación MASIVA ===== */
 async function asignarClientesMasivamente(ev) {
   const sel = document.getElementById("massAssignUserSelect");
   const msg = document.getElementById("massAssignMessage");
   const btn = ev?.target || document.getElementById("massAssignBtn");
 
   const targetId = sel?.value ? parseInt(sel.value) : null;
-  if (targetId == null || Number.isNaN(targetId)) { if (msg){ msg.className='error'; msg.textContent='Selecciona un usuario.'; } return; }
+  if (!targetId || Number.isNaN(targetId)) { if (msg){ msg.className='error'; msg.textContent='Selecciona un usuario.'; } return; }
 
   const ids = Array.from(document.querySelectorAll(".client-checkbox:checked"))
               .map(ch => parseInt(ch.dataset.id))
               .filter(n => !Number.isNaN(n));
-  if (ids.length === 0) { if (msg){ msg.className='info'; msg.textContent='No hay clientes seleccionados.'; } return; }
+  if (!ids.length) { if (msg){ msg.className='info'; msg.textContent='No hay clientes seleccionados.'; } return; }
 
   if (!confirm(`¿Asignar ${ids.length} clientes al gestor #${targetId}?`)) return;
 
@@ -233,7 +261,6 @@ async function asignarClientesMasivamente(ev) {
   if (msg) { msg.className = "info"; msg.textContent = `Asignando ${ids.length} clientes...`; }
 
   try {
-    // Usa el formato masivo que tu backend soporta: { clienteIds, asignado_a }
     const res = await fetch("/actualizar-clientes", withAuthHeaders({
       method: "POST",
       body: JSON.stringify({ clienteIds: ids, asignado_a: targetId })
@@ -250,7 +277,7 @@ async function asignarClientesMasivamente(ev) {
   }
 }
 
-/* ====== Importar Excel (empresa activa) ====== */
+/* ===== Importar Excel ===== */
 async function procesarArchivo(event) {
   const file = event.target.files?.[0];
   const msg = document.getElementById("mensajeExcel");
@@ -301,7 +328,6 @@ async function procesarArchivo(event) {
     if (msg) { msg.className = "error"; msg.textContent = e.message || "Error procesando el archivo."; }
   }
 }
-
 async function limpiarClientes() {
   if (!confirm("¿Eliminar TODOS los clientes de esta empresa?")) return;
   const msg = document.getElementById("mensajeExcel");
@@ -311,12 +337,10 @@ async function limpiarClientes() {
     if (!res.ok || d.status === "error") throw new Error(d.mensaje || `HTTP ${res.status}`);
     if (msg) { msg.className = "success"; msg.textContent = d.mensaje || "Eliminados"; }
     cargarTodosLosClientes();
-  } catch (e) {
-    if (msg) { msg.className = "error"; msg.textContent = e.message; }
-  }
+  } catch (e) { if (msg) { msg.className = "error"; msg.textContent = e.message; } }
 }
 
-/* ====== Gestor: bandeja (ver asignados & registrar llamadas) ====== */
+/* ===== Gestor ===== */
 function cargarClientes(uid) {
   fetch(`/clientes/${uid}`, withAuthHeaders())
     .then(res => res.json())
@@ -352,7 +376,6 @@ function cargarClientes(uid) {
       });
     });
 }
-
 function registrarLlamada(btn, clienteId) {
   const fila = btn.closest("tr");
   const monto = fila.querySelector(".monto").value || 0;
@@ -380,7 +403,7 @@ function registrarLlamada(btn, clienteId) {
     .catch(() => { btn.disabled = false; btn.textContent = "Registrar"; });
 }
 
-/* ====== Filtros de asignación ====== */
+/* ===== Filtros ===== */
 function filtrarClientes() {
   const filtro = (document.getElementById("filtroCliente")?.value || "").toLowerCase();
   document.querySelectorAll("#tablaAsignarClientes tbody tr").forEach(tr => {
@@ -389,4 +412,73 @@ function filtrarClientes() {
 }
 function toggleAllClients(cb) {
   document.querySelectorAll("#tablaAsignarClientes .client-checkbox").forEach(ch => ch.checked = cb.checked);
+}
+
+/* ===== Reporte & Export ===== */
+let _ultimoReporte = [];
+async function cargarReporte() {
+  const desde = document.getElementById("repDesde")?.value || "";
+  const hasta = document.getElementById("repHasta")?.value || "";
+  const msg = document.getElementById("reporteMsg");
+  const tbody = document.querySelector("#tablaReporte tbody");
+  if (tbody) tbody.innerHTML = "";
+
+  try {
+    const qs = new URLSearchParams({});
+    if (desde) qs.set("desde", desde);
+    if (hasta) qs.set("hasta", hasta);
+
+    const res = await fetch(`/reporte${qs.toString() ? `?${qs.toString()}` : ""}`, withAuthHeaders());
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(data.mensaje || `HTTP ${res.status}`);
+
+    const rows = Array.isArray(data) ? data : (data?.reporte || []);
+    _ultimoReporte = rows;
+
+    if (!rows.length) { if (msg) { msg.className = "info"; msg.textContent = "Sin registros en el periodo."; } return; }
+    if (msg) msg.textContent = "";
+
+    rows.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${r.usuario || ""}</td>
+        <td>${r.cliente || ""}</td>
+        <td>${r.resultado || ""}</td>
+        <td>${r.monto_cobrado != null ? Number(r.monto_cobrado).toLocaleString() : ""}</td>
+        <td>${r.fecha || ""}</td>
+        <td>${r.observaciones || ""}</td>
+        <td>${r.tarifa || ""}</td>
+        <td>${r.saldo_exigible || ""}</td>
+        <td>${r.saldo || ""}</td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    if (msg) { msg.className = "error"; msg.textContent = e.message; }
+  }
+}
+function exportarReporte() {
+  if (!Array.isArray(_ultimoReporte) || !_ultimoReporte.length) { alert("Primero carga el reporte."); return; }
+  const rows = _ultimoReporte.map(r => ({
+    Usuario: r.usuario || "",
+    Cliente: r.cliente || "",
+    Resultado: r.resultado || "",
+    "Monto Cobrado": r.monto_cobrado != null ? Number(r.monto_cobrado) : 0,
+    Fecha: r.fecha || "",
+    Observaciones: r.observaciones || "",
+    Tarifa: r.tarifa || "",
+    "Saldo Exigible": r.saldo_exigible || "",
+    Saldo: r.saldo || ""
+  }));
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Reporte");
+  XLSX.writeFile(wb, `reporte_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+/* ===== Mapa (opcional) ===== */
+let mapInstance = null, directionsRendererInstance = null;
+function inicializarMapaManual() {
+  // placeholder: evita errores si no hay Google Maps
+  const el = document.getElementById('mapa');
+  if (el && !el.dataset.inited) { el.dataset.inited = '1'; el.innerHTML = '<div style="padding:12px;">Mapa cargado (demo)</div>'; }
 }
