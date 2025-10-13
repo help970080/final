@@ -1,4 +1,4 @@
-// .env solo en desarrollo; en Render se usan vars del panel
+// .env solo en desarrollo
 if (process.env.NODE_ENV !== 'production') {
   try { require('dotenv').config(); } catch (_) {}
 }
@@ -18,7 +18,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ===== Rutas de datos =====
+// ==== Paths de datos ====
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_PATH = path.join(DATA_DIR, 'database.json');
 const EMPRESAS_PATH = path.join(DATA_DIR, 'empresas.json');
@@ -32,9 +32,7 @@ function readJSON(p, fallback) {
     return t ? JSON.parse(t) : fallback;
   } catch { return fallback; }
 }
-function writeJSON(p, data) {
-  fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
-}
+function writeJSON(p, data) { fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8'); }
 
 function loadDB() {
   return readJSON(DB_PATH, {
@@ -45,13 +43,11 @@ function loadDB() {
   });
 }
 function saveDB(db) { writeJSON(DB_PATH, db); }
-
 function loadEmpresas() { return readJSON(EMPRESAS_PATH, []); }
 function saveEmpresas(list) { writeJSON(EMPRESAS_PATH, list); }
-
 function nextId(list) { return list.length ? Math.max(...list.map(x => x.id || 0)) + 1 : 1; }
 
-// ===== Seed mínimo =====
+// Seed mínimo
 (function seed() {
   let empresas = loadEmpresas();
   if (empresas.length === 0) {
@@ -68,11 +64,9 @@ function nextId(list) { return list.length ? Math.max(...list.map(x => x.id || 0
   saveDB(db);
 })();
 
-// ===== Helpers de tenant =====
+// Helpers tenant
 function getEmpresaIdFromReq(req) {
-  // Superadmin actuando como empresa
   if (req.headers['x-empresa-id']) return Number(req.headers['x-empresa-id']);
-  // Usuario normal (admin/gestor): empresa del usuario
   const uid = req.headers['x-user-id'];
   if (uid != null) {
     const db = loadDB();
@@ -82,13 +76,13 @@ function getEmpresaIdFromReq(req) {
   return null;
 }
 
-// ===== API KEY Maps =====
+// API key maps
 app.get('/api-key', (req, res) => {
   if (!MAPS_API_KEY) return res.status(500).json({ error: 'Maps_API_KEY no configurada' });
   res.json({ key: MAPS_API_KEY });
 });
 
-// ===== Auth =====
+// Auth
 app.post('/login', (req, res) => {
   const { usuario, password } = req.body || {};
   const db = loadDB();
@@ -97,12 +91,11 @@ app.post('/login', (req, res) => {
   return res.json({ status: 'ok', id: u.id, usuario: u.nombre, rol: u.rol, empresa_id: u.empresa_id ?? null });
 });
 
-// ===== Empresas (solo superadmin) =====
+// Empresas (solo superadmin)
 app.get('/empresas', (req, res) => {
   if (String(req.headers['x-user-id']) !== '0') return res.status(403).json({ status: 'error', mensaje: 'Solo superadmin' });
   res.json(loadEmpresas());
 });
-
 app.post('/empresas/crear', (req, res) => {
   if (String(req.headers['x-user-id']) !== '0') return res.status(403).json({ status: 'error', mensaje: 'Solo superadmin' });
   const { nombre, admin_nombre, admin_password } = req.body || {};
@@ -117,7 +110,7 @@ app.post('/empresas/crear', (req, res) => {
   res.json({ status: 'ok', mensaje: 'Empresa creada', empresa: { id, nombre } });
 });
 
-// ===== Usuarios (por empresa) =====
+// Usuarios (empresa)
 app.get('/usuarios', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -125,7 +118,6 @@ app.get('/usuarios', (req, res) => {
   const usuarios = db.usuarios.filter(u => u.empresa_id === empresaId && u.rol !== 'superadmin');
   res.json(usuarios);
 });
-
 app.post('/usuarios', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -139,7 +131,6 @@ app.post('/usuarios', (req, res) => {
   saveDB(db);
   res.json({ status: 'ok', usuario: nuevo });
 });
-
 app.post('/usuarios/eliminar', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -152,14 +143,13 @@ app.post('/usuarios/eliminar', (req, res) => {
   res.json({ status: 'ok', mensaje: 'Eliminado' });
 });
 
-// ===== Clientes =====
+// Clientes
 app.get('/clientes', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
   const db = loadDB();
   res.json(db.clientes.filter(c => c.empresa_id === empresaId));
 });
-
 app.get('/clientes/:usuarioId', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -169,19 +159,39 @@ app.get('/clientes/:usuarioId', (req, res) => {
   res.json(list);
 });
 
+// Asignaciones (1×1 y MASIVA)
 app.post('/actualizar-clientes', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-  const { clientes } = req.body || {};
+
+  const { clientes, clienteIds, asignado_a } = req.body || {};
   const db = loadDB();
-  (clientes || []).forEach(c => {
-    const idx = db.clientes.findIndex(x => x.empresa_id === empresaId && x.id === Number(c.id));
-    if (idx >= 0) db.clientes[idx].asignado_a = c.asignado_a;
-  });
-  saveDB(db);
-  res.json({ status: 'ok', mensaje: 'Asignaciones guardadas' });
+
+  // Masiva: clienteIds + asignado_a
+  if (Array.isArray(clienteIds)) {
+    let count = 0;
+    clienteIds.forEach(id => {
+      const idx = db.clientes.findIndex(x => x.empresa_id === empresaId && x.id === Number(id));
+      if (idx >= 0) { db.clientes[idx].asignado_a = (asignado_a == null ? null : Number(asignado_a)); count++; }
+    });
+    saveDB(db);
+    return res.json({ status: 'ok', mensaje: `Asignados ${count} clientes` });
+  }
+
+  // 1×1: clientes: [{id, asignado_a}]
+  if (Array.isArray(clientes)) {
+    clientes.forEach(c => {
+      const idx = db.clientes.findIndex(x => x.empresa_id === empresaId && x.id === Number(c.id));
+      if (idx >= 0) db.clientes[idx].asignado_a = (c.asignado_a == null ? null : Number(c.asignado_a));
+    });
+    saveDB(db);
+    return res.json({ status: 'ok', mensaje: 'Asignaciones guardadas' });
+  }
+
+  return res.status(400).json({ status: 'error', mensaje: 'Payload inválido' });
 });
 
+// Cargar clientes desde Excel
 app.post('/cargar-clientes', async (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -204,12 +214,12 @@ app.post('/cargar-clientes', async (req, res) => {
       asignado_a: c.asignado_a ?? null,
       lat: null, lng: null
     };
-    // geocodificación best-effort (si hay dirección y API key)
+    // Geocodificación opcional
     if (MAPS_API_KEY && nuevo.direccion) {
       try {
         const url = 'https://maps.googleapis.com/maps/api/geocode/json';
         const r = await axios.get(url, { params: { address: nuevo.direccion, key: MAPS_API_KEY } });
-        if (r.data && r.data.results && r.data.results[0]) {
+        if (r.data?.results?.[0]) {
           const g = r.data.results[0].geometry.location;
           nuevo.lat = g.lat; nuevo.lng = g.lng; conCoords++;
         }
@@ -231,31 +241,7 @@ app.post('/limpiar-clientes', (req, res) => {
   res.json({ status: 'ok', mensaje: `Eliminados ${before - db.clientes.length} clientes` });
 });
 
-app.post('/actualizar-coordenadas', async (req, res) => {
-  const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-  const { clienteId, direccion } = req.body || {};
-  const db = loadDB();
-  const idx = db.clientes.findIndex(c => c.empresa_id === empresaId && c.id === Number(clienteId));
-  if (idx < 0) return res.json({ status: 'error', mensaje: 'Cliente no encontrado' });
-
-  if (!MAPS_API_KEY) return res.json({ status: 'error', mensaje: 'API key no configurada' });
-  try {
-    const url = 'https://maps.googleapis.com/maps/api/geocode/json';
-    const r = await axios.get(url, { params: { address: direccion, key: MAPS_API_KEY } });
-    if (r.data && r.data.results && r.data.results[0]) {
-      const g = r.data.results[0].geometry.location;
-      db.clientes[idx].lat = g.lat; db.clientes[idx].lng = g.lng;
-      saveDB(db);
-      return res.json({ status: 'ok', lat: g.lat, lng: g.lng, direccion_formateada: r.data.results[0].formatted_address });
-    }
-    return res.json({ status: 'error', mensaje: 'Sin resultados' });
-  } catch (e) {
-    return res.json({ status: 'error', mensaje: 'Error geocodificación' });
-  }
-});
-
-// ===== Llamadas =====
+// Llamadas (gestiones)
 app.post('/llamadas', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
   if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
@@ -275,70 +261,31 @@ app.post('/llamadas', (req, res) => {
   res.json({ status: 'ok', mensaje: 'Llamada registrada' });
 });
 
-// ===== Ubicación de usuario (opcional) =====
-app.post('/actualizar-ubicacion-usuario', (req, res) => {
-  const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-  const { usuario_id, lat, lng } = req.body || {};
-  const db = loadDB();
-  db.ubicaciones.push({ usuario_id: Number(usuario_id), empresa_id: empresaId, lat, lng, fecha: new Date().toISOString() });
-  saveDB(db);
-  res.json({ status: 'ok' });
-});
-
-// ======== REPORTE DE GESTIONES ========
-// GET /reporte?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&usuario_id=123&resultado=Éxito
+// Reporte para Admin
 app.get('/reporte', (req, res) => {
   const empresaId = getEmpresaIdFromReq(req);
-  if (empresaId == null) {
-    return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
-  }
+  if (empresaId == null) return res.status(403).json({ status: 'error', mensaje: 'Sin empresa activa' });
 
   const { desde, hasta, usuario_id, resultado } = req.query;
 
-  // Normaliza fechas (inclusivo)
   let start = null, end = null;
   try {
     if (desde) start = new Date(`${desde}T00:00:00`);
     if (hasta) end   = new Date(`${hasta}T23:59:59`);
-  } catch (_) { /* ignorar */ }
+  } catch (_) {}
 
   const db = loadDB();
-
-  // Índices para enriquecer filas
   const usuariosIdx = {};
-  for (const u of db.usuarios) {
-    if (u.empresa_id === empresaId) usuariosIdx[u.id] = u;
-  }
+  for (const u of db.usuarios) if (u.empresa_id === empresaId) usuariosIdx[u.id] = u;
   const clientesIdx = {};
-  for (const c of db.clientes) {
-    if (c.empresa_id === empresaId) clientesIdx[c.id] = c;
-  }
+  for (const c of db.clientes) if (c.empresa_id === empresaId) clientesIdx[c.id] = c;
 
-  // Filtra llamadas de la empresa
   let llamadas = (db.llamadas || []).filter(l => Number(l.empresa_id) === Number(empresaId));
+  if (start) llamadas = llamadas.filter(l => new Date(`${l.fecha}T00:00:00`) >= start);
+  if (end)   llamadas = llamadas.filter(l => new Date(`${l.fecha}T23:59:59`) <= end);
+  if (usuario_id) llamadas = llamadas.filter(l => Number(l.usuario_id) === Number(usuario_id));
+  if (resultado)  llamadas = llamadas.filter(l => String(l.resultado||'').toLowerCase() === String(resultado).toLowerCase());
 
-  // Fecha (inclusivo)
-  if (start) llamadas = llamadas.filter(l => {
-    const f = new Date(`${l.fecha}T00:00:00`);
-    return f >= start;
-  });
-  if (end) llamadas = llamadas.filter(l => {
-    const f = new Date(`${l.fecha}T23:59:59`);
-    return f <= end;
-  });
-
-  // Filtros opcionales
-  if (usuario_id) {
-    const uid = Number(usuario_id);
-    llamadas = llamadas.filter(l => Number(l.usuario_id) === uid);
-  }
-  if (resultado) {
-    const rnorm = String(resultado).toLowerCase();
-    llamadas = llamadas.filter(l => String(l.resultado || '').toLowerCase() === rnorm);
-  }
-
-  // Arma filas enriquecidas
   const filas = llamadas.map(l => {
     const u = usuariosIdx[l.usuario_id] || {};
     const c = clientesIdx[l.cliente_id] || {};
@@ -349,7 +296,7 @@ app.get('/reporte', (req, res) => {
       cliente: c.nombre || `#${l.cliente_id}`,
       resultado: l.resultado || '',
       monto_cobrado: Number(l.monto_cobrado || 0),
-      fecha: l.fecha, // YYYY-MM-DD
+      fecha: l.fecha,
       observaciones: l.observaciones || '',
       tarifa: c.tarifa || '',
       saldo_exigible: c.saldo_exigible || '',
@@ -357,11 +304,9 @@ app.get('/reporte', (req, res) => {
     };
   });
 
-  // Ordena por fecha desc (más reciente primero)
   filas.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
-
-  return res.json(filas);
+  res.json(filas);
 });
 
-// ===== Start =====
+// Start
 app.listen(PORT, () => console.log(`Servidor en puerto ${PORT}`));
