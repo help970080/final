@@ -1,16 +1,19 @@
 {
-  "name": "celexpress-multitenant",
+  "name": "final",
   "version": "1.0.0",
-  "description": "App de cobranza multi-tenant",
+  "description": "App multi-empresa de cobranza",
+  "private": true,
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "npm audit fix || true"
   },
-  "license": "MIT",
+  "engines": {
+    "node": ">=18 <23"
+  },
   "dependencies": {
-    "axios": "^1.7.7",
-    "body-parser": "^1.20.2",
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2"
   }
 }
