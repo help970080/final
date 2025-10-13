@@ -1,3 +1,4 @@
+// server.js (multi-tenant + superadmin endpoints)
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
@@ -11,623 +12,445 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+
+// Serve static assets from /public
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Ruta persistente para el archivo de base de datos
-const DB_FILE = '/opt/render/project/src/data/database.json'; 
+// Persistent DB path (Render allows writes here)
+const DB_FILE = '/opt/render/project/src/data/database.json';
 
 let dbCache = null;
 let lastDbUpdate = 0;
 
-const Maps_API_KEY = process.env.Maps_API_KEY; 
+const Maps_API_KEY = process.env.Maps_API_KEY;
 
-// Definición de los niveles de bono y cuotas
-const BONO_TIERS = [
-    { target: 10000, base_salary: 2000, percentage: 0.15 },
-    { target: 15000, base_salary: 3000, percentage: 0.16 },
-    { target: 20000, base_salary: 4000, percentage: 0.17 },
-    { target: 25000, base_salary: 5000, percentage: 0.18 },
-    { target: 30000, base_salary: 6000, percentage: 0.19 },
-];
-const PERIOD_DAYS = 15; // Días del período para el objetivo (15 días)
+// ---------- DB helpers ----------
+function ensureDataDir() {
+  const dir = path.dirname(DB_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
 
 function readDB() {
-    const now = Date.now();
-    const stats = fs.existsSync(DB_FILE) ? fs.statSync(DB_FILE) : null;
-    
-    if (!dbCache || (stats && stats.mtimeMs > lastDbUpdate)) {
-        if (!fs.existsSync(DB_FILE)) {
-            const initialData = {
-                usuarios: [
-                    { id: 0, nombre: "admin", password: "admin123" },
-                    { id: 1, nombre: "juan", password: "123" },
-                    { id: 2, nombre: "ana", password: "123" },
-                    { id: 3, nombre: "leo", password: "123" }
-                ],
-                clientes: [],
-                llamadas: []
-            };
-            initialData.usuarios = initialData.usuarios.map(u => ({
-                ...u,
-                lat: null, 
-                lng: null,
-                ultima_actualizacion_ubicacion: null
-            }));
-
-            const dir = path.dirname(DB_FILE);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
-            dbCache = initialData;
-        } else {
-            try {
-                dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-                dbCache.usuarios = dbCache.usuarios.map(u => ({
-                    ...u,
-                    lat: u.lat !== undefined ? u.lat : null,
-                    lng: u.lng !== undefined ? u.lng : null,
-                    ultima_actualizacion_ubicacion: u.ultima_actualizacion_ubicacion !== undefined ? u.ultima_actualizacion_ubicacion : null
-                }));
-            } catch (err) {
-                console.error("Error al leer database.json:", err);
-                dbCache = { usuarios: [{ id: 0, nombre: "admin", password: "admin123" }], clientes: [], llamadas: [] };
-            }
-        }
-        lastDbUpdate = now;
+  const stats = fs.existsSync(DB_FILE) ? fs.statSync(DB_FILE) : null;
+  if (!dbCache || (stats && stats.mtimeMs > lastDbUpdate)) {
+    if (!fs.existsSync(DB_FILE)) {
+      ensureDataDir();
+      const initialData = {
+        empresas: [{ id: 1, nombre: "Celexpress" }],
+        usuarios: [
+          { id: 0, nombre: "superadmin", password: "admin123", empresa_id: null, rol: "superadmin", lat: null, lng: null, ultima_actualizacion_ubicacion: null },
+        ],
+        clientes: [],
+        llamadas: []
+      };
+      fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf8');
+      dbCache = initialData;
+    } else {
+      try {
+        dbCache = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        dbCache.usuarios = (dbCache.usuarios || []).map(u => ({
+          ...u,
+          rol: u.rol || (u.id === 0 ? 'superadmin' : 'gestor'),
+          lat: u.lat ?? null,
+          lng: u.lng ?? null,
+          ultima_actualizacion_ubicacion: u.ultima_actualizacion_ubicacion ?? null
+        }));
+        dbCache.empresas = dbCache.empresas || [];
+        dbCache.clientes = dbCache.clientes || [];
+        dbCache.llamadas = dbCache.llamadas || [];
+      } catch (err) {
+        console.error("Error al leer database.json:", err);
+        dbCache = { empresas: [], usuarios: [], clientes: [], llamadas: [] };
+      }
     }
-    return dbCache;
+    lastDbUpdate = Date.now();
+  }
+  return dbCache;
 }
 
 function writeDB(data) {
-    try {
-        const dir = path.dirname(DB_FILE);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
-        dbCache = data; 
-        lastDbUpdate = Date.now(); 
-    } catch (err) {
-        console.error("Error al escribir en database.json:", err);
-    }
+  try {
+    ensureDataDir();
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+    dbCache = data;
+    lastDbUpdate = Date.now();
+  } catch (err) {
+    console.error("Error al escribir en database.json:", err);
+  }
 }
 
-// Endpoints
+function getUserById(userId) {
+  const db = readDB();
+  return db.usuarios.find(u => parseInt(u.id) === parseInt(userId));
+}
+
+function getAuthUser(req) {
+  const uid = req.headers['x-user-id'] ?? req.body.usuario_id ?? req.params.usuarioId;
+  if (uid === undefined || uid === null || uid === '') return null;
+  return getUserById(uid);
+}
+
+function requireSuperadmin(req, res) {
+  const u = getAuthUser(req);
+  if (!u || (u.rol !== 'superadmin' && u.id !== 0)) {
+    res.status(403).json({ status: "error", mensaje: "Solo superadmin puede realizar esta acción" });
+    return null;
+  }
+  return u;
+}
+
+function resolveEmpresaIdFromReq(req) {
+  const uid = req.body.usuario_id ?? req.params.usuarioId ?? req.headers['x-user-id'];
+  if (uid !== undefined && uid !== null && uid !== '') {
+    const u = getUserById(uid);
+    if (u && u.empresa_id) return parseInt(u.empresa_id);
+  }
+  if (req.body && req.body.empresa_id) return parseInt(req.body.empresa_id);
+  if (req.query && req.query.empresa_id) return parseInt(req.query.empresa_id);
+  if (req.headers['x-empresa-id']) return parseInt(req.headers['x-empresa-id']);
+  return null;
+}
+
+// ---------- Base routes ----------
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+app.get('/api-key', (req, res) => {
+  if (!Maps_API_KEY) return res.status(404).json({ status: "error", mensaje: "Maps API Key no configurada" });
+  res.json({ key: Maps_API_KEY });
+});
+
+// ---------- Auth ----------
 app.post('/login', (req, res) => {
-    const { usuario, password } = req.body;
-    const db = readDB();
-    const user = db.usuarios.find(u => u.nombre === usuario && u.password === password);
-    if (user) {
-        res.json({ 
-            status: "ok", 
-            usuario: user.nombre, 
-            id: user.id,
-            esAdmin: user.id === 0 
-        });
-    } else {
-        res.status(401).json({ status: "error", mensaje: "Usuario o contraseña incorrectos" });
-    }
+  const { usuario, password } = req.body;
+  const db = readDB();
+  const user = db.usuarios.find(u => u.nombre === usuario && u.password === password);
+  if (!user) return res.status(401).json({ status: "error", mensaje: "Usuario o contraseña incorrectos" });
+  res.json({
+    status: "ok",
+    usuario: user.nombre,
+    id: user.id,
+    empresa_id: user.empresa_id,
+    rol: user.rol || (user.id === 0 ? "superadmin" : "gestor"),
+    esAdmin: (user.rol === "admin") || (user.rol === "superadmin") || (user.id === 0)
+  });
 });
 
+// ---------- Superadmin: empresas ----------
+app.get('/empresas', (req, res) => {
+  const superadmin = requireSuperadmin(req, res);
+  if (!superadmin) return;
+  const db = readDB();
+  res.json(db.empresas);
+});
+
+app.post('/empresas/crear', (req, res) => {
+  const superadmin = requireSuperadmin(req, res);
+  if (!superadmin) return;
+
+  const { nombre, admin_nombre, admin_password } = req.body || {};
+  if (!nombre || !admin_nombre || !admin_password) {
+    return res.status(400).json({ status: "error", mensaje: "nombre, admin_nombre y admin_password son requeridos" });
+  }
+
+  const db = readDB();
+  if (db.empresas.some(e => String(e.nombre).toLowerCase() === String(nombre).toLowerCase())) {
+    return res.status(400).json({ status: "error", mensaje: "Ya existe una empresa con ese nombre" });
+  }
+
+  const nextEmpresaId = db.empresas.length ? Math.max(...db.empresas.map(e => e.id)) + 1 : 1;
+  const nuevaEmpresa = { id: nextEmpresaId, nombre: String(nombre).trim() };
+  db.empresas.push(nuevaEmpresa);
+
+  const nextUserId = db.usuarios.length ? Math.max(...db.usuarios.map(u => u.id)) + 1 : 1;
+  if (db.usuarios.some(u => u.empresa_id === nuevaEmpresa.id && String(u.nombre).toLowerCase() === String(admin_nombre).toLowerCase())) {
+    return res.status(400).json({ status: "error", mensaje: "El usuario admin ya existe dentro de esa empresa" });
+  }
+  const adminUser = {
+    id: nextUserId,
+    nombre: String(admin_nombre).trim(),
+    password: String(admin_password).trim(),
+    rol: 'admin',
+    empresa_id: nuevaEmpresa.id,
+    lat: null, lng: null, ultima_actualizacion_ubicacion: null
+  };
+  db.usuarios.push(adminUser);
+
+  writeDB(db);
+  res.json({ status: "ok", mensaje: "Empresa y usuario admin creados", empresa: nuevaEmpresa, admin: { id: adminUser.id, nombre: adminUser.nombre, empresa_id: adminUser.empresa_id, rol: adminUser.rol } });
+});
+
+app.post('/empresas/:empresaId/admins', (req, res) => {
+  const superadmin = requireSuperadmin(req, res);
+  if (!superadmin) return;
+
+  const empresaId = parseInt(req.params.empresaId);
+  const { nombre, password } = req.body || {};
+  if (!nombre || !password) return res.status(400).json({ status: "error", mensaje: "nombre y password son requeridos" });
+
+  const db = readDB();
+  const empresa = db.empresas.find(e => parseInt(e.id) === empresaId);
+  if (!empresa) return res.status(404).json({ status: "error", mensaje: "Empresa no encontrada" });
+
+  if (db.usuarios.some(u => u.empresa_id === empresaId && String(u.nombre).toLowerCase() === String(nombre).toLowerCase())) {
+    return res.status(400).json({ status: "error", mensaje: "El usuario ya existe en esta empresa" });
+  }
+
+  const nextUserId = db.usuarios.length ? Math.max(...db.usuarios.map(u => u.id)) + 1 : 1;
+  const nuevoAdmin = {
+    id: nextUserId,
+    nombre: String(nombre).trim(),
+    password: String(password).trim(),
+    rol: 'admin',
+    empresa_id: empresaId,
+    lat: null, lng: null, ultima_actualizacion_ubicacion: null
+  };
+  db.usuarios.push(nuevoAdmin);
+  writeDB(db);
+  res.json({ status: "ok", mensaje: "Admin creado", admin: { id: nuevoAdmin.id, nombre: nuevoAdmin.nombre } });
+});
+
+// ---------- Clientes ----------
 app.get('/clientes', (req, res) => {
-    const db = readDB();
-    res.json(db.clientes || []);
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const db = readDB();
+  const list = (db.clientes || []).filter(c => parseInt(c.empresa_id) === parseInt(empresa_id));
+  res.json(list);
 });
 
 app.get('/clientes/:usuarioId', (req, res) => {
-    const db = readDB();
-    const userId = parseInt(req.params.usuarioId);
-    const clientesAsignados = db.clientes.filter(c => c.asignado_a !== null && parseInt(c.asignado_a) === userId);
-    res.json(clientesAsignados);
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const db = readDB();
+  const userId = parseInt(req.params.usuarioId);
+  const clientesAsignados = db.clientes.filter(c =>
+    parseInt(c.empresa_id) === parseInt(empresa_id) &&
+    c.asignado_a !== null &&
+    parseInt(c.asignado_a) === userId
+  );
+  res.json(clientesAsignados);
 });
 
 app.post('/cargar-clientes', async (req, res) => {
-    try {
-        const nuevosClientes = Array.isArray(req.body.clientes) ? req.body.clientes : [];
-        const db = readDB();
-        const maxId = db.clientes.reduce((max, c) => Math.max(max, c.id || 0), 0);
-        let nextId = maxId + 1;
-        const loteClientes = [];
-        let clientesConCoordenadas = 0;
-        
-        for (const cliente of nuevosClientes) {
-            let lat = null;
-            let lng = null;
-            if (cliente.direccion && Maps_API_KEY) { 
-                try {
-                    let direccionCompleta = `${cliente.direccion}, CDMX, México`.replace(/,\s+/g, ', ').replace(/\s+/g, '+');
-                    const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-                        params: { address: direccionCompleta, key: Maps_API_KEY, region: 'mx' }
-                    });
-                    if (response.data.status === "OK") {
-                        const location = response.data.results[0].geometry.location;
-                        lat = location.lat;
-                        lng = location.lng;
-                        clientesConCoordenadas++;
-                    } else {
-                        console.warn(`Geocodificación para cliente ${cliente.nombre} falló: ${response.data.status}`);
-                    }
-                } catch (error) {
-                    console.error("Error en geocodificación para cliente:", cliente.nombre, error.message);
-                }
-            }
-            loteClientes.push({ ...cliente, id: nextId++, asignado_a: cliente.asignado_a || null, lat, lng });
+  try {
+    const empresa_id = resolveEmpresaIdFromReq(req);
+    if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+
+    const nuevosClientes = Array.isArray(req.body.clientes) ? req.body.clientes : [];
+    const db = readDB();
+    const maxId = db.clientes.reduce((max, c) => Math.max(max, c.id || 0), 0);
+    let nextId = maxId + 1;
+    const loteClientes = [];
+    let clientesConCoordenadas = 0;
+
+    for (const cliente of nuevosClientes) {
+      let lat = null, lng = null;
+      if (cliente.direccion && Maps_API_KEY) {
+        try {
+          let direccionCompleta = `${cliente.direccion}, México`.replace(/,\s+/g, ', ').replace(/\s+/g, '+');
+          const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+            params: { address: direccionCompleta, key: Maps_API_KEY, region: 'mx' }
+          });
+          if (response.data.status === "OK") {
+            const location = response.data.results[0].geometry.location;
+            lat = location.lat; lng = location.lng;
+            clientesConCoordenadas++;
+          }
+        } catch (err) {
+          console.error("Error geocodificando:", cliente.nombre, err.message);
         }
-        db.clientes = [...db.clientes, ...loteClientes];
-        writeDB(db);
-        res.json({ 
-            status: "ok", 
-            mensaje: `${loteClientes.length} clientes cargados exitosamente`,
-            totalClientes: db.clientes.length,
-            clientesConCoordenadas
-        });
-    } catch (error) {
-        console.error("Error en /cargar-clientes:", error);
-        res.status(500).json({ status: "error", mensaje: "Error al procesar la carga de clientes" });
+      }
+      loteClientes.push({
+        ...cliente,
+        empresa_id: parseInt(empresa_id),
+        id: nextId++,
+        asignado_a: cliente.asignado_a || null,
+        lat, lng
+      });
     }
+
+    db.clientes = [...db.clientes, ...loteClientes];
+    writeDB(db);
+    res.json({ status: "ok", mensaje: `${loteClientes.length} clientes cargados`, totalClientes: db.clientes.filter(c => parseInt(c.empresa_id) === parseInt(empresa_id)).length, clientesConCoordenadas });
+  } catch (error) {
+    console.error("Error en /cargar-clientes:", error);
+    res.status(500).json({ status: "error", mensaje: "Error al procesar carga de clientes" });
+  }
 });
 
 app.post('/actualizar-coordenadas', async (req, res) => {
-    try {
-        const { clienteId, direccion } = req.body;
-        const db = readDB();
-        if (!direccion || direccion.trim().length < 5) {
-            return res.status(400).json({ 
-                status: "error", 
-                mensaje: "La dirección proporcionada es demasiado corta o inválida. Debe tener al menos 5 caracteres." 
-            });
-        }
-        if (!Maps_API_KEY) {
-            return res.status(500).json({ status: "error", mensaje: "API Key de Google Maps no configurada en el servidor." });
-        }
+  try {
+    const empresa_id = resolveEmpresaIdFromReq(req);
+    if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+    const { clienteId, direccion } = req.body;
+    const db = readDB();
+    if (!direccion || direccion.trim().length < 5) return res.status(400).json({ status: "error", mensaje: "Dirección inválida" });
+    if (!Maps_API_KEY) return res.status(500).json({ status: "error", mensaje: "API Key no configurada" });
 
-        let direccionCompleta = direccion.trim().replace(/\s+/g, ' ').replace(/,+/g, ',').replace(/(^,|,$)/g, '').replace(/\b(colonia|col|cdmx|mexico)\b/gi, '').trim();
-        if (!direccionCompleta.toLowerCase().includes('méxico') && !direccionCompleta.toLowerCase().includes('cdmx') && !direccionCompleta.toLowerCase().includes('ciudad de méxico')) {
-            direccionCompleta += ', CDMX, México';
-        }
-        const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
-            params: {
-                address: direccionCompleta.replace(/\s+/g, '+'),
-                key: Maps_API_KEY, 
-                region: 'mx',
-                components: 'country:MX',
-                bounds: '19.0,-99.5|19.6,-98.9'
-            }
-        });
-        if (response.data.status === "OK") {
-            const location = response.data.results[0].geometry.location;
-            const clienteIndex = db.clientes.findIndex(c => c.id === clienteId);
-            if (clienteIndex !== -1) {
-                db.clientes[clienteIndex].lat = location.lat;
-                db.clientes[clienteIndex].lng = location.lng;
-                writeDB(db);
-                return res.json({ 
-                    status: "ok",
-                    lat: location.lat,
-                    lng: location.lng,
-                    direccion_formateada: response.data.results[0].formatted_address,
-                    direccion_original: direccion
-                });
-            }
-            return res.status(404).json({ status: "error", mensaje: "Cliente no encontrado en la base de datos" });
-        }
-        let mensajeError = "No se pudo geocodificar la dirección";
-        let sugerencia = "Verifica que la dirección esté completa (calle, número, colonia)";
-        switch(response.data.status) {
-            case "ZERO_RESULTS":
-                mensajeError = "La dirección no fue encontrada por Google Maps";
-                sugerencia = "Intenta con una dirección más específica o verifica que sea correcta. Incluye número y colonia si es posible.";
-                break;
-            case "OVER_QUERY_LIMIT":
-                mensajeError = "Se ha excedido el límite de consultas a la API de Google Maps";
-                sugerencia = "Intenta nuevamente más tarde o revisa tu cuota de la API Key.";
-                break;
-            case "REQUEST_DENIED":
-                mensajeError = "Acceso denegado a la API de Google Maps";
-                sugerencia = "Verifica la configuración de tu API Key y asegúrate de que los servicios de Geocoding estén habilitados.";
-                break;
-        }
-        res.status(400).json({
-            status: "error",
-            mensaje: mensajeError,
-            detalle: response.data.status,
-            direccion_solicitada: direccion,
-            direccion_formateada: response.data.results?.[0]?.formatted_address,
-            sugerencia: sugerencia
-        });
-    } catch (error) {
-        console.error("Error en el proceso de geocodificación:", error);
-        res.status(500).json({ 
-            status: "error", 
-            mensaje: "Error interno del servidor al intentar geocodificar.",
-            error: process.env.NODE_ENV === 'development' ? error.message : null 
-        });
+    let direccionCompleta = direccion.trim().replace(/\s+/g, ' ').replace(/,+/g, ',').replace(/(^,|,$)/g, '');
+    if (!/méxico|cdmx|ciudad de méxico|estado de méxico/i.test(direccionCompleta)) direccionCompleta += ', México';
+
+    const response = await axios.get('https://maps.googleapis.com/maps/api/geocode/json', {
+      params: { address: direccionCompleta.replace(/\s+/g, '+'), key: Maps_API_KEY, region: 'mx', components: 'country:MX' }
+    });
+
+    if (response.data.status === "OK") {
+      const location = response.data.results[0].geometry.location;
+      const idx = db.clientes.findIndex(c => parseInt(c.id) === parseInt(clienteId) && parseInt(c.empresa_id) === parseInt(empresa_id));
+      if (idx === -1) return res.status(404).json({ status: "error", mensaje: "Cliente no encontrado" });
+      db.clientes[idx].lat = location.lat;
+      db.clientes[idx].lng = location.lng;
+      writeDB(db);
+      return res.json({ status: "ok", lat: location.lat, lng: location.lng, direccion_formateada: response.data.results[0].formatted_address, direccion_original: direccion });
     }
+
+    res.status(400).json({ status: "error", mensaje: "No se pudo geocodificar", detalle: response.data.status });
+  } catch (error) {
+    console.error("Error geocodificación:", error);
+    res.status(500).json({ status: "error", mensaje: "Error interno al geocodificar" });
+  }
 });
 
 app.post('/limpiar-clientes', (req, res) => {
-    const db = readDB();
-    const count = db.clientes.length;
-    db.clientes = [];
-    writeDB(db);
-    res.json({ status: "ok", mensaje: `${count} clientes han sido eliminados de la base de datos` });
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const db = readDB();
+  const before = db.clientes.length;
+  db.clientes = db.clientes.filter(c => parseInt(c.empresa_id) !== parseInt(empresa_id));
+  writeDB(db);
+  const removed = before - db.clientes.length;
+  res.json({ status: "ok", mensaje: `${removed} clientes eliminados` });
 });
 
 app.post('/actualizar-clientes', (req, res) => {
-    const actualizaciones = Array.isArray(req.body.clientes) ? req.body.clientes : [];
-    const db = readDB();
-    let actualizados = 0;
-    db.clientes = db.clientes.map(cliente => {
-        const actualizacion = actualizaciones.find(a => parseInt(a.id) === parseInt(cliente.id));
-        if (actualizacion) {
-            actualizados++;
-            return {
-                ...cliente,
-                asignado_a: actualizacion.asignado_a !== undefined ? 
-                    (actualizacion.asignado_a ? parseInt(actualizacion.asignado_a) : null) : 
-                    cliente.asignado_a,
-                lat: actualizacion.lat !== undefined ? actualizacion.lat : cliente.lat,
-                lng: actualizacion.lng !== undefined ? actualizacion.lng : cliente.lng
-            };
-        }
-        return cliente;
-    });
-    writeDB(db);
-    res.json({ 
-        status: "ok", 
-        mensaje: `${actualizados} clientes actualizados correctamente`,
-        total: db.clientes.length 
-    });
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const actualizaciones = Array.isArray(req.body.clientes) ? req.body.clientes : [];
+  const db = readDB();
+  let actualizados = 0;
+  db.clientes = db.clientes.map(cliente => {
+    if (parseInt(cliente.empresa_id) !== parseInt(empresa_id)) return cliente;
+    const upd = actualizaciones.find(a => parseInt(a.id) === parseInt(cliente.id));
+    if (!upd) return cliente;
+    actualizados++;
+    return {
+      ...cliente,
+      asignado_a: (upd.asignado_a !== undefined) ? (upd.asignado_a ? parseInt(upd.asignado_a) : null) : cliente.asignado_a,
+      lat: (upd.lat !== undefined) ? upd.lat : cliente.lat,
+      lng: (upd.lng !== undefined) ? upd.lng : cliente.lng
+    };
+  });
+  writeDB(db);
+  res.json({ status: "ok", mensaje: `${actualizados} clientes actualizados` });
 });
 
+// ---------- Usuarios ----------
 app.get('/usuarios', (req, res) => {
-    const db = readDB();
-    res.json(db.usuarios.filter(u => u.id !== 0)); 
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const db = readDB();
+  const list = db.usuarios.filter(u => (u.rol !== 'superadmin') && parseInt(u.empresa_id) === parseInt(empresa_id));
+  res.json(list);
 });
 
 app.post('/usuarios', (req, res) => {
-    const { nombre, password } = req.body;
-    const db = readDB();
-    if (!nombre || !password) {
-        return res.status(400).json({ status: "error", mensaje: "El nombre y la contraseña son requeridos" });
-    }
-    if (db.usuarios.some(u => u.nombre.toLowerCase() === nombre.toLowerCase())) {
-        return res.status(400).json({ status: "error", mensaje: "El nombre de usuario ya existe. Por favor, elige otro." });
-    }
-    const nuevoId = db.usuarios.length > 0 ? Math.max(...db.usuarios.map(u => u.id)) + 1 : 1;
-    const nuevoUsuario = { 
-        id: nuevoId, 
-        nombre: nombre.trim(), 
-        password: password.trim(),
-        lat: null, 
-        lng: null,
-        ultima_actualizacion_ubicacion: null
-    };
-    db.usuarios.push(nuevoUsuario);
-    writeDB(db);
-    res.json({ status: "ok", usuario: { id: nuevoUsuario.id, nombre: nuevoUsuario.nombre } });
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const { nombre, password, rol } = req.body;
+  if (!nombre || !password) return res.status(400).json({ status: "error", mensaje: "Nombre y contraseña requeridos" });
+
+  const db = readDB();
+  if (db.usuarios.some(u => parseInt(u.empresa_id) === parseInt(empresa_id) && u.nombre.toLowerCase() === String(nombre).toLowerCase())) {
+    return res.status(400).json({ status: "error", mensaje: "El usuario ya existe en esta empresa" });
+  }
+  const nuevoId = db.usuarios.length ? Math.max(...db.usuarios.map(u => u.id)) + 1 : 1;
+  const nuevoUsuario = { id: nuevoId, nombre: String(nombre).trim(), password: String(password).trim(), rol: rol || 'gestor', empresa_id: parseInt(empresa_id), lat: null, lng: null, ultima_actualizacion_ubicacion: null };
+  db.usuarios.push(nuevoUsuario);
+  writeDB(db);
+  res.json({ status: "ok", usuario: { id: nuevoUsuario.id, nombre: nuevoUsuario.nombre, rol: nuevoUsuario.rol } });
 });
 
 app.post('/usuarios/eliminar', (req, res) => {
-    const { id } = req.body;
-    const db = readDB();
-    if (id === 0) { 
-        return res.status(400).json({ status: "error", mensaje: "No se puede eliminar al usuario administrador." });
-    }
-    const usuarioIndex = db.usuarios.findIndex(u => u.id === parseInt(id));
-    if (usuarioIndex === -1) {
-        return res.status(404).json({ status: "error", mensaje: "Usuario no encontrado." });
-    }
-    db.clientes = db.clientes.map(c => {
-        if (parseInt(c.asignado_a) === parseInt(id)) {
-            return { ...c, asignado_a: null };
-        }
-        return c;
-    });
-    db.usuarios.splice(usuarioIndex, 1);
-    writeDB(db);
-    res.json({ status: "ok", mensaje: "Usuario eliminado correctamente. Los clientes asignados han sido desasignados." });
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const { id } = req.body;
+  const db = readDB();
+  const usuarioIndex = db.usuarios.findIndex(u => parseInt(u.id) === parseInt(id) && u.rol !== 'superadmin' && parseInt(u.empresa_id) === parseInt(empresa_id));
+  if (usuarioIndex === -1) return res.status(404).json({ status: "error", mensaje: "Usuario no encontrado" });
+  const userId = db.usuarios[usuarioIndex].id;
+  db.clientes = db.clientes.map(c => (parseInt(c.empresa_id) === parseInt(empresa_id) && parseInt(c.asignado_a) === parseInt(userId)) ? { ...c, asignado_a: null } : c);
+  db.usuarios.splice(usuarioIndex, 1);
+  writeDB(db);
+  res.json({ status: "ok", mensaje: "Usuario eliminado y clientes desasignados" });
 });
 
+// ---------- Llamadas / Reporte ----------
 app.get('/reporte', (req, res) => {
-    const db = readDB();
-    const reporte = db.llamadas.map(l => {
-        const cliente = db.clientes.find(c => c.id === l.cliente_id);
-        const usuario = db.usuarios.find(u => u.id === l.usuario_id);
-        return {
-            usuario: usuario?.nombre || "Desconocido",
-            cliente: cliente?.nombre || "Desconocido",
-            resultado: l.resultado,
-            fecha: l.fecha,
-            observaciones: l.observaciones,
-            monto_cobrado: l.monto_cobrado || 0,
-            tarifa: cliente?.tarifa || "-",
-            saldo_exigible: cliente?.saldo_exigible || "-",
-            saldo: cliente?.saldo || "-"
-        };
-    });
-    res.json(reporte);
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const db = readDB();
+  const llamadas = db.llamadas.filter(l => parseInt(l.empresa_id) === parseInt(empresa_id));
+  const reporte = llamadas.map(l => {
+    const cliente = db.clientes.find(c => c.id === l.cliente_id && parseInt(c.empresa_id) === parseInt(empresa_id));
+    const usuario = db.usuarios.find(u => u.id === l.usuario_id && parseInt(u.empresa_id) === parseInt(empresa_id));
+    return {
+      usuario: usuario?.nombre || "Desconocido",
+      cliente: cliente?.nombre || "Desconocido",
+      resultado: l.resultado,
+      fecha: l.fecha,
+      observaciones: l.observaciones,
+      monto_cobrado: l.monto_cobrado || 0,
+      tarifa: cliente?.tarifa || "-",
+      saldo_exigible: cliente?.saldo_exigible || "-",
+      saldo: cliente?.saldo || "-"
+    };
+  });
+  res.json(reporte);
 });
 
 app.post('/llamadas', (req, res) => {
-    const nuevaLlamada = req.body;
-    const db = readDB();
-    
-    const clienteIndex = db.clientes.findIndex(c => c.id === nuevaLlamada.cliente_id);
-    if (clienteIndex === -1) {
-        return res.status(404).json({ status: "error", mensaje: "Cliente no encontrado en la base de datos." });
-    }
-    
-    const cliente = db.clientes[clienteIndex];
-    if (cliente.asignado_a !== nuevaLlamada.usuario_id) {
-        return res.status(403).json({ status: "error", mensaje: "Este cliente no está asignado a tu usuario. No puedes registrar la llamada." });
-    }
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const nueva = req.body;
+  const db = readDB();
 
-    const hoy = new Date().toISOString().split("T")[0];
-    if (db.llamadas.find(l => l.cliente_id === nuevaLlamada.cliente_id && l.fecha === hoy)) {
-        return res.status(400).json({ status: "error", mensaje: "Este cliente ya fue procesado hoy. Solo se permite una llamada por día." });
-    }
+  const clienteIndex = db.clientes.findIndex(c => c.id === nueva.cliente_id && parseInt(c.empresa_id) === parseInt(empresa_id));
+  if (clienteIndex === -1) return res.status(404).json({ status: "error", mensaje: "Cliente no encontrado en tu empresa." });
 
-    const maxIdLlamada = db.llamadas.reduce((max, l) => Math.max(max, l.id || 0), 0);
-    nuevaLlamada.id = maxIdLlamada + 1;
-    nuevaLlamada.fecha = nuevaLlamada.fecha || new Date().toISOString().split("T")[0]; 
-    db.llamadas.push(nuevaLlamada);
-    db.clientes[clienteIndex].asignado_a = null; 
-    writeDB(db);
-    res.json({ status: "ok", mensaje: "Llamada registrada exitosamente.", id: nuevaLlamada.id });
+  const cliente = db.clientes[clienteIndex];
+  if (cliente.asignado_a !== nueva.usuario_id) {
+    return res.status(403).json({ status: "error", mensaje: "Este cliente no está asignado a tu usuario." });
+  }
+
+  const hoy = new Date().toISOString().split("T")[0];
+  if (db.llamadas.find(l => l.cliente_id === nueva.cliente_id && l.fecha === hoy)) {
+    return res.status(400).json({ status: "error", mensaje: "Este cliente ya fue procesado hoy." });
+  }
+
+  const maxId = db.llamadas.reduce((max, l) => Math.max(max, l.id || 0), 0);
+  db.llamadas.push({ ...nueva, id: maxId + 1, empresa_id: parseInt(empresa_id), fecha: nueva.fecha || hoy });
+  db.clientes[clienteIndex].asignado_a = null;
+  writeDB(db);
+  res.json({ status: "ok", mensaje: "Llamada registrada", id: maxId + 1 });
 });
 
-// Nuevo endpoint para que los gestores envíen su ubicación
 app.post('/actualizar-ubicacion-usuario', (req, res) => {
-    const { userId, lat, lng } = req.body;
-    const db = readDB();
-    const usuarioIndex = db.usuarios.findIndex(u => u.id === parseInt(userId));
-
-    if (usuarioIndex !== -1) {
-        db.usuarios[usuarioIndex].lat = lat;
-        db.usuarios[usuarioIndex].lng = lng;
-        db.usuarios[usuarioIndex].ultima_actualizacion_ubicacion = new Date().toISOString();
-        writeDB(db);
-        res.json({ status: "ok", mensaje: "Ubicación actualizada." });
-    } else {
-        res.status(404).json({ status: "error", mensaje: "Usuario no encontrado." });
-    }
+  const empresa_id = resolveEmpresaIdFromReq(req);
+  if (!empresa_id) return res.status(403).json({ status: "error", mensaje: "Empresa no resuelta" });
+  const { usuario_id, lat, lng } = req.body;
+  const db = readDB();
+  const idx = db.usuarios.findIndex(u => parseInt(u.id) === parseInt(usuario_id) && parseInt(u.empresa_id) === parseInt(empresa_id));
+  if (idx === -1) return res.status(404).json({ status: "error", mensaje: "Usuario no encontrado en tu empresa" });
+  db.usuarios[idx].lat = lat ?? null;
+  db.usuarios[idx].lng = lng ?? null;
+  db.usuarios[idx].ultima_actualizacion_ubicacion = new Date().toISOString();
+  writeDB(db);
+  res.json({ status: "ok", mensaje: "Ubicación actualizada" });
 });
 
-// Nuevo endpoint para que el admin obtenga las ubicaciones de todos los gestores
-app.get('/ubicaciones-gestores', (req, res) => {
-    const db = readDB();
-    // Excluir al admin y devolver solo los usuarios con ubicación
-    const gestoresConUbicacion = db.usuarios
-        .filter(u => u.id !== 0 && u.lat !== null && u.lng !== null)
-        .map(u => ({
-            id: u.id,
-            nombre: u.nombre,
-            lat: u.lat,
-            lng: u.lng,
-            ultima_actualizacion: u.ultima_actualizacion_ubicacion
-        }));
-    res.json(gestoresConUbicacion);
-});
-
-// Nuevo endpoint para obtener estadísticas (KPIs) generales y de gestores
-app.get('/kpis', (req, res) => {
-    const db = readDB();
-    const clientes = db.clientes || [];
-    const llamadas = db.llamadas || [];
-    const usuarios = db.usuarios.filter(u => u.id !== 0) || []; // Solo gestores, excluye admin
-
-    // Obtener la fecha de inicio del período desde la query (si existe)
-    const fechaInicioStr = req.query.fechaInicio;
-    let fechaInicioPeriodo = null;
-    if (fechaInicioStr) {
-        try {
-            // Asegurarse de que la fecha se interprete como UTC para evitar problemas de zona horaria
-            fechaInicioPeriodo = new Date(fechaInicioStr + 'T00:00:00.000Z'); 
-            if (isNaN(fechaInicioPeriodo.getTime())) { // Validar fecha
-                fechaInicioPeriodo = null;
-            }
-        } catch (e) {
-            console.error("Error al parsear fechaInicio:", e);
-            fechaInicioPeriodo = null;
-        }
-    }
-    
-    // Filtrar llamadas por período si se proporcionó fecha de inicio
-    const llamadasEnPeriodo = fechaInicioPeriodo 
-        ? llamadas.filter(l => {
-            const fechaLlamada = new Date(l.fecha + 'T00:00:00.000Z'); // Interpretar fecha de llamada como UTC
-            return fechaLlamada.getTime() >= fechaInicioPeriodo.getTime();
-        })
-        : llamadas;
-
-
-    const clientesTotales = clientes.length;
-    const clientesAsignados = clientes.filter(c => c.asignado_a !== null).length;
-    const clientesPendientesAsignar = clientes.filter(c => c.asignado_a === null).length;
-
-    const llamadasTotales = llamadasEnPeriodo.length;
-    const montoTotalCobrado = llamadasEnPeriodo.reduce((sum, l) => sum + (parseFloat(l.monto_cobrado) || 0), 0);
-    
-    const llamadasExito = llamadasEnPeriodo.filter(l => l.resultado === 'Éxito').length;
-    const efectividadLlamadas = llamadasTotales > 0 ? (llamadasExito / llamadasTotales * 100).toFixed(2) : 0;
-
-    const hoy = new Date().toISOString().split("T")[0];
-    const clientesProcesadosHoy = llamadasEnPeriodo.filter(l => l.fecha === hoy).length;
-
-    // Calcular KPIs de Riesgo (Semaforo)
-    let riesgoClientes = { verde: 0, amarillo: 0, rojo: 0, montoRiesgoAlto: 0 };
-    clientes.forEach(cliente => {
-        let puntajeRiesgo = 0;
-        const llamadasCliente = llamadasEnPeriodo.filter(l => l.cliente_id === cliente.id);
-
-        llamadasCliente.forEach(llamada => {
-            switch (llamada.resultado) {
-                case 'Rechazado':
-                    puntajeRiesgo += 30;
-                    break;
-                case 'No contestó':
-                    puntajeRiesgo += 10;
-                    break;
-                case 'En proceso':
-                    puntajeRiesgo += 5;
-                    break;
-                case 'Éxito':
-                    puntajeRiesgo = Math.max(0, puntajeRiesgo - 10);
-                    break;
-            }
-        });
-
-        if (cliente.saldo_exigible > 500 && puntajeRiesgo > 10) {
-            puntajeRiesgo += 5;
-        }
-
-        let clasificacionRiesgo = 'verde';
-        if (puntajeRiesgo >= 40) {
-            clasificacionRiesgo = 'rojo';
-            riesgoClientes.montoRiesgoAlto += (parseFloat(cliente.saldo_exigible) || 0);
-        } else if (puntajeRiesgo >= 15) {
-            clasificacionRiesgo = 'amarillo';
-        } else {
-            clasificacionRiesgo = 'verde';
-        }
-
-        riesgoClientes[clasificacionRiesgo]++;
-    });
-
-    // Calcular KPIs de Rendimiento de Gestores y Bonos
-    const rendimientoGestores = usuarios.map(gestor => {
-        const llamadasGestor = llamadasEnPeriodo.filter(l => l.usuario_id === gestor.id);
-        const montoCobradoGestor = llamadasGestor.reduce((sum, l) => sum + (parseFloat(l.monto_cobrado) || 0), 0);
-        const llamadasExitoGestor = llamadasGestor.filter(l => l.resultado === 'Éxito').length;
-        const efectividadGestor = llamadasGestor.length > 0 ? (llamadasExitoGestor / llamadasGestor.length * 100).toFixed(2) : 0;
-        const totalLlamadasGestor = llamadasGestor.length;
-
-        // Calcular bono y porcentaje de cuota
-        let salarioBaseGanado = 0;
-        let porcentajeBonoGanado = 0;
-        let cuotaActualNivel = 0;
-        let proximoNivelTarget = null;
-        let proximoNivelPorcentaje = null;
-
-        let reachedTier = null;
-        for (let i = BONO_TIERS.length - 1; i >= 0; i--) {
-            if (montoCobradoGestor >= BONO_TIERS[i].target) {
-                reachedTier = BONO_TIERS[i];
-                break;
-            }
-        }
-
-        if (reachedTier) {
-            salarioBaseGanado = reachedTier.base_salary;
-            porcentajeBonoGanado = montoCobradoGestor * reachedTier.percentage;
-            cuotaActualNivel = reachedTier.target;
-        }
-
-        // Encontrar el próximo nivel para la tendencia
-        for (const tier of BONO_TIERS) {
-            if (montoCobradoGestor < tier.target) {
-                proximoNivelTarget = tier.target;
-                proximoNivelPorcentaje = ((montoCobradoGestor / tier.target) * 100).toFixed(2);
-                break;
-            }
-        }
-        if (proximoNivelTarget === null && montoCobradoGestor >= BONO_TIERS[BONO_TIERS.length - 1].target) {
-            proximoNivelTarget = BONO_TIERS[BONO_TIERS.length - 1].target; // Ya alcanzó el nivel más alto
-            proximoNivelPorcentaje = 100;
-        } else if (proximoNivelTarget === null) { // Si no alcanzó el primer nivel
-            proximoNivelTarget = BONO_TIERS[0].target;
-            proximoNivelPorcentaje = ((montoCobradoGestor / BONO_TIERS[0].target) * 100).toFixed(2);
-        }
-
-        // Proyección a 15 días (tendencia)
-        // Días transcurridos en el PERIODO SELECCIONADO por el admin
-        let daysTranscurredInPeriod = 0;
-        const todayUTC = Date.UTC(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()); // Fecha actual en UTC
-
-        if (fechaInicioPeriodo) {
-            daysTranscurredInPeriod = Math.floor((todayUTC - fechaInicioPeriodo.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-            // Asegurarse de que no exceda el número de días del periodo y que sea al menos 1
-            daysTranscurredInPeriod = Math.min(daysTranscurredInPeriod, PERIOD_DAYS); 
-            daysTranscurredInPeriod = Math.max(1, daysTranscurredInPeriod); 
-        } else {
-            // Si no hay fecha de inicio, la proyección no es tan significativa,
-            // pero podemos usar el total de días desde la primera llamada o 1 si no hay llamadas.
-            const firstCallDateGestor = llamadasGestor.length > 0 
-                ? new Date(Math.min(...llamadasGestor.map(l => new Date(l.fecha + 'T00:00:00.000Z').getTime()))) 
-                : null;
-            if (firstCallDateGestor) {
-                daysTranscurredInPeriod = Math.floor((todayUTC - firstCallDateGestor.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-                daysTranscurredInPeriod = Math.min(daysTranscurredInPeriod, PERIOD_DAYS);
-                daysTranscurredInPeriod = Math.max(1, daysTranscurredInPeriod);
-            } else {
-                daysTranscurredInPeriod = 1; 
-            }
-        }
-        
-        let projectedAmount = 0;
-        if (montoCobradoGestor > 0 && daysTranscurredInPeriod > 0) {
-            projectedAmount = (montoCobradoGestor / daysTranscurredInPeriod) * PERIOD_DAYS;
-        } else if (montoCobradoGestor === 0 && daysTranscurredInPeriod > 0) {
-             projectedAmount = 0; // Si no ha cobrado nada, la proyección es 0
-        }
-        // Si daysTranscurredInPeriod es 0 (no se debería dar por Math.max(1, ...)), projectedAmount sería 0.
-
-        let trendStatus = 'neutral';
-        const currentTargetForProjection = proximoNivelTarget || BONO_TIERS[0].target;
-        if (projectedAmount >= currentTargetForProjection * 0.95) {
-            trendStatus = 'verde';
-        } else if (projectedAmount >= currentTargetForProjection * 0.75) {
-            trendStatus = 'amarillo';
-        } else {
-            trendStatus = 'rojo';
-        }
-
-        return {
-            id: gestor.id,
-            nombre: gestor.nombre,
-            montoCobrado: montoCobradoGestor.toFixed(2),
-            efectividad: efectividadGestor,
-            totalLlamadas: totalLlamadasGestor,
-            salarioBaseGanado: salarioBaseGanado.toFixed(2),
-            porcentajeBonoGanado: porcentajeBonoGanado.toFixed(2),
-            cuotaAlcanzada: cuotaActualNivel,
-            proximoNivelTarget: proximoNivelTarget,
-            proximoNivelPorcentaje: proximoNivelPorcentaje,
-            projectedAmount: projectedAmount.toFixed(2),
-            trendStatus: trendStatus
-        };
-    });
-
-    res.json({
-        clientesTotales,
-        clientesAsignados,
-        clientesPendientesAsignar,
-        llamadasTotales,
-        montoTotalCobrado: montoTotalCobrado.toFixed(2),
-        efectividadLlamadas,
-        clientesProcesadosHoy,
-        riesgoClientes,
-        rendimientoGestores
-    });
-});
-
-
+// ---------- Start ----------
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor iniciado en http://localhost:${PORT}`);
-    console.log(`Google Maps API Key (server): ${Maps_API_KEY ? 'Cargada' : 'ERROR: No cargada'}`);
-    const dataDir = path.dirname(DB_FILE);
-    if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-        console.log(`📂 Directorio de datos creado en: ${dataDir}`);
-    }
-    console.log(`💾 Ruta de base de datos: ${DB_FILE}`);
-    readDB();
+  console.log(`Servidor escuchando en puerto ${PORT}`);
 });
-
-module.exports = app;
