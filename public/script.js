@@ -1,6 +1,5 @@
 /* =========================================================
-   public/script.js — multi-empresa + tracking y mapa
-   (fechas locales + headers corregidos + geolocalización)
+   public/script.js – VERSIÓN CORREGIDA
 ========================================================= */
 
 let usuarioActual = null;
@@ -12,19 +11,27 @@ let empresaActivaId = null;
 
 function withAuthHeaders(init = {}) {
   const u = JSON.parse(localStorage.getItem("user"));
-  const headers = { "Content-Type": "application/json", ...(init.headers || {}) };
+  const headers = { 
+    "Content-Type": "application/json", 
+    ...(init.headers || {}) 
+  };
 
-  if (u?.id !== undefined) headers["x-user-id"] = u.id;
+  if (u?.id !== undefined) headers["x-user-id"] = String(u.id);
 
   const act = localStorage.getItem("empresaActivaId");
   if (act && (u?.rol === "superadmin" || u?.rol === "admin")) {
-    headers["x-empresa-id"] = act;
+    headers["x-empresa-id"] = String(act);
   }
-  return { ...init, headers };
+  
+  // CORRECCIÓN: Devolver todo el init completo
+  return { 
+    ...init, 
+    headers 
+  };
 }
 
-function toast(msg, type = "info", idHint = "floatingMessage") {
-  const el = document.getElementById(idHint) || document.getElementById("floatingMessage");
+function toast(msg, type = "info") {
+  const el = document.getElementById("floatingMessage");
   if (!el) return;
   el.className = `toast ${type}`;
   el.textContent = msg;
@@ -33,22 +40,32 @@ function toast(msg, type = "info", idHint = "floatingMessage") {
 }
 
 async function safeJson(res) {
+  const ct = res.headers.get("content-type") || "";
+  
+  if (!ct.includes("application/json")) {
+    const text = await res.text();
+    return { 
+      status: "error", 
+      mensaje: `Respuesta no-JSON (${res.status}): ${text.slice(0, 200)}` 
+    };
+  }
+  
   try {
-    const ct = res.headers.get("content-type") || "";
-    if (ct.includes("application/json")) return await res.json();
     return await res.json();
-  } catch {
-    const t = await res.text();
-    return { status: "error", mensaje: `HTTP ${res.status} - ${t.slice(0, 200)}` };
+  } catch (err) {
+    return { 
+      status: "error", 
+      mensaje: `Error parseando JSON: ${err.message}` 
+    };
   }
 }
 
-// Fecha local YYYY-MM-DD
 function hoyLocalYMD() {
   const d = new Date();
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
   return d.toISOString().slice(0, 10);
 }
+
 function ymdLocal(date) {
   const d = new Date(date);
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
@@ -60,7 +77,11 @@ function login() {
   const usuario = document.getElementById("usuario")?.value?.trim();
   const password = document.getElementById("password")?.value?.trim();
   const msg = document.getElementById("login-message");
-  if (!usuario || !password) { if (msg) msg.textContent = "Completa usuario y contraseña"; return; }
+  
+  if (!usuario || !password) { 
+    if (msg) msg.textContent = "Completa usuario y contraseña"; 
+    return; 
+  }
 
   fetch("/login", {
     method: "POST",
@@ -89,7 +110,11 @@ function cerrarSesion() {
 /* ===== Boot ===== */
 window.addEventListener("load", () => {
   const userData = JSON.parse(localStorage.getItem("user"));
-  if (!userData && window.location.pathname.includes("clientes.html")) { window.location.href = "/"; return; }
+  if (!userData && window.location.pathname.includes("clientes.html")) { 
+    window.location.href = "/"; 
+    return; 
+  }
+  
   usuarioActual = userData || null;
   esAdmin = (usuarioActual?.rol === "admin");
   esSuperadmin = (usuarioActual?.rol === "superadmin");
@@ -99,7 +124,7 @@ window.addEventListener("load", () => {
     const span = document.getElementById("nombreUsuario");
     if (span && usuarioActual?.usuario) span.textContent = usuarioActual.usuario;
 
-    // Superadmin: empresas
+    // Superadmin
     if (esSuperadmin) {
       const sec = document.getElementById("seccionEmpresas");
       if (sec) {
@@ -122,17 +147,16 @@ window.addEventListener("load", () => {
       document.getElementById("btnCargarReporte")?.addEventListener("click", cargarReporte);
       document.getElementById("btnExportarReporte")?.addEventListener("click", exportarReporte);
 
-      // Fechas por defecto
-      const d = new Date(); const first = new Date(d.getFullYear(), d.getMonth(), 1);
+      const d = new Date(); 
+      const first = new Date(d.getFullYear(), d.getMonth(), 1);
       document.getElementById("repDesde").value = ymdLocal(first);
       document.getElementById("repHasta").value = ymdLocal(d);
 
-      // Mapa admin/superadmin
       prepararMapaAdmin();
       document.getElementById('btnRecargarMapa')?.addEventListener('click', cargarMapaGestores);
     }
 
-    // Gestor: bandeja + tracking
+    // Gestor
     if (!esSuperadmin && usuarioActual?.id !== undefined) {
       cargarClientes(usuarioActual.id);
       iniciarTrackingGestor();
@@ -146,34 +170,64 @@ function poblarSelectorEmpresas() {
   const msg = document.getElementById('empresaActivaMsg');
   if (!select) return;
 
-  fetch('/empresas', { method: 'GET', headers: { 'Content-Type': 'application/json', 'x-user-id': 0 } })
+  fetch('/empresas', { 
+    method: 'GET', 
+    headers: { 'Content-Type': 'application/json', 'x-user-id': '0' } 
+  })
   .then(r => r.json())
   .then(empresas => {
     select.innerHTML = '<option value="">-- Selecciona empresa --</option>';
     (empresas || []).forEach(e => {
       const o = document.createElement('option');
-      o.value = e.id; o.textContent = `#${e.id} - ${e.nombre}`;
+      o.value = e.id; 
+      o.textContent = `#${e.id} - ${e.nombre}`;
       select.appendChild(o);
     });
     const actual = localStorage.getItem('empresaActivaId');
-    if (actual) { select.value = String(actual); if (msg) { msg.className='info'; msg.textContent = `Empresa activa: #${actual}`; } }
+    if (actual) { 
+      select.value = String(actual); 
+      if (msg) { 
+        msg.className='info'; 
+        msg.textContent = `Empresa activa: #${actual}`; 
+      } 
+    }
   })
-  .catch(err => { if (msg) { msg.className='error'; msg.textContent = `Error: ${err.message}`; } });
+  .catch(err => { 
+    if (msg) { 
+      msg.className='error'; 
+      msg.textContent = `Error: ${err.message}`; 
+    } 
+  });
 }
+
 function activarEmpresaParaSuperadmin() {
   const sel = document.getElementById('empresaActivaSelect');
   const msg = document.getElementById('empresaActivaMsg');
-  if (!sel?.value) { if (msg) { msg.className='error'; msg.textContent='Selecciona una empresa.'; } return; }
+  if (!sel?.value) { 
+    if (msg) { 
+      msg.className='error'; 
+      msg.textContent='Selecciona una empresa.'; 
+    } 
+    return; 
+  }
   localStorage.setItem('empresaActivaId', sel.value);
-  if (msg) { msg.className='success'; msg.textContent=`Ahora administras la empresa #${sel.value}`; }
+  if (msg) { 
+    msg.className='success'; 
+    msg.textContent=`Ahora administras la empresa #${sel.value}`; 
+  }
   location.reload();
 }
+
 function salirDeEmpresaActiva() {
   localStorage.removeItem('empresaActivaId');
   const msg = document.getElementById('empresaActivaMsg');
-  if (msg) { msg.className='info'; msg.textContent='Sin empresa activa.'; }
+  if (msg) { 
+    msg.className='info'; 
+    msg.textContent='Sin empresa activa.'; 
+  }
   location.reload();
 }
+
 function crearEmpresaSuperadmin() {
   const nombre = document.getElementById('nuevaEmpresaNombre')?.value?.trim();
   const adminNombre = document.getElementById('nuevaEmpresaAdmin')?.value?.trim();
@@ -187,14 +241,17 @@ function crearEmpresaSuperadmin() {
 
   fetch('/empresas/crear', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-user-id': 0 },
+    headers: { 'Content-Type': 'application/json', 'x-user-id': '0' },
     body: JSON.stringify({ nombre, admin_nombre: adminNombre, admin_password: adminPass })
   })
   .then(safeJson)
   .then(data => {
     if (data.status !== 'ok') throw new Error(data.mensaje || 'Error al crear la empresa');
 
-    if (msg) { msg.className = 'success'; msg.textContent = `✅ ${data.mensaje}: #${data.empresa.id} - ${data.empresa.nombre}`; }
+    if (msg) { 
+      msg.className = 'success'; 
+      msg.textContent = `✅ ${data.mensaje}: #${data.empresa.id} - ${data.empresa.nombre}`; 
+    }
 
     document.getElementById('nuevaEmpresaNombre').value = '';
     document.getElementById('nuevaEmpresaAdmin').value = '';
@@ -202,11 +259,14 @@ function crearEmpresaSuperadmin() {
 
     poblarSelectorEmpresas();
     localStorage.setItem('empresaActivaId', String(data.empresa.id));
-    const m2 = document.getElementById('empresaActivaMsg');
-    if (m2) { m2.className = 'success'; m2.textContent = `Ahora administras la empresa #${data.empresa.id}`; }
     setTimeout(() => location.reload(), 500);
   })
-  .catch(err => { if (msg) { msg.className = 'error'; msg.textContent = `❌ ${err.message}`; } });
+  .catch(err => { 
+    if (msg) { 
+      msg.className = 'error'; 
+      msg.textContent = `❌ ${err.message}`; 
+    } 
+  });
 }
 
 /* ===== Usuarios (admin) ===== */
@@ -219,7 +279,11 @@ function cargarUsuarios() {
         tbody.innerHTML = "";
         (usuarios || []).forEach(u => {
           const tr = document.createElement("tr");
-          tr.innerHTML = `<td>${u.id}</td><td>${u.nombre}</td><td><button class="button-danger" onclick="eliminarUsuario(${u.id})">Eliminar</button></td>`;
+          tr.innerHTML = `
+            <td>${u.id}</td>
+            <td>${u.nombre}</td>
+            <td><button class="button-danger" onclick="eliminarUsuario(${u.id})">Eliminar</button></td>
+          `;
           tbody.appendChild(tr);
         });
       }
@@ -235,27 +299,36 @@ function cargarUsuarios() {
       }
     });
 }
+
 function agregarUsuario() {
   const nombre = document.getElementById("nuevoUsuarioNombre")?.value;
   const password = document.getElementById("nuevoUsuarioPassword")?.value;
   if (!nombre || !password) return;
-  fetch("/usuarios", withAuthHeaders({ method: "POST", body: JSON.stringify({ nombre, password }) }))
-    .then(r => r.json())
-    .then(d => {
-      if (d.status === "ok") {
-        document.getElementById("nuevoUsuarioNombre").value = "";
-        document.getElementById("nuevoUsuarioPassword").value = "";
-        cargarUsuarios();
-        toast("Usuario creado", "success");
-      } else {
-        toast(d.mensaje || "Error al crear", "error");
-      }
-    });
+  
+  fetch("/usuarios", withAuthHeaders({ 
+    method: "POST", 
+    body: JSON.stringify({ nombre, password }) 
+  }))
+  .then(r => r.json())
+  .then(d => {
+    if (d.status === "ok") {
+      document.getElementById("nuevoUsuarioNombre").value = "";
+      document.getElementById("nuevoUsuarioPassword").value = "";
+      cargarUsuarios();
+      toast("Usuario creado", "success");
+    } else {
+      toast(d.mensaje || "Error al crear", "error");
+    }
+  });
 }
+
 function eliminarUsuario(id) {
   if (!confirm("¿Eliminar usuario?")) return;
-  fetch("/usuarios/eliminar", withAuthHeaders({ method: "POST", body: JSON.stringify({ id }) }))
-    .then(() => cargarUsuarios());
+  fetch("/usuarios/eliminar", withAuthHeaders({ 
+    method: "POST", 
+    body: JSON.stringify({ id }) 
+  }))
+  .then(() => cargarUsuarios());
 }
 
 /* ===== Clientes (admin) ===== */
@@ -292,27 +365,51 @@ function cargarTodosLosClientes() {
         });
     });
 }
+
 function guardarAsignaciones() {
   const actualizaciones = Array.from(document.querySelectorAll("#tablaAsignarClientes .usuarioSelect"))
-    .map(s => ({ id: parseInt(s.dataset.id), asignado_a: s.value ? parseInt(s.value) : null }));
-  fetch("/actualizar-clientes", withAuthHeaders({ method: "POST", body: JSON.stringify({ clientes: actualizaciones }) }))
-    .then(r => r.json())
-    .then(() => { toast("Asignaciones guardadas", "success"); cargarTodosLosClientes(); });
+    .map(s => ({ 
+      id: parseInt(s.dataset.id), 
+      asignado_a: s.value ? parseInt(s.value) : null 
+    }));
+  
+  fetch("/actualizar-clientes", withAuthHeaders({ 
+    method: "POST", 
+    body: JSON.stringify({ clientes: actualizaciones }) 
+  }))
+  .then(r => r.json())
+  .then(() => { 
+    toast("Asignaciones guardadas", "success"); 
+    cargarTodosLosClientes(); 
+  });
 }
 
-/* ===== Asignación MASIVA ===== */
+/* ===== Asignación MASIVA (CORREGIDA) ===== */
 async function asignarClientesMasivamente(ev) {
   const sel = document.getElementById("massAssignUserSelect");
   const msg = document.getElementById("massAssignMessage");
   const btn = ev?.target || document.getElementById("massAssignBtn");
 
   const targetId = sel?.value ? parseInt(sel.value) : null;
-  if (!targetId || Number.isNaN(targetId)) { if (msg){ msg.className='error'; msg.textContent='Selecciona un usuario.'; } return; }
+  if (!targetId || Number.isNaN(targetId)) { 
+    if (msg){ 
+      msg.className='error'; 
+      msg.textContent='Selecciona un usuario.'; 
+    } 
+    return; 
+  }
 
   const ids = Array.from(document.querySelectorAll(".client-checkbox:checked"))
               .map(ch => parseInt(ch.dataset.id))
               .filter(n => !Number.isNaN(n));
-  if (!ids.length) { if (msg){ msg.className='info'; msg.textContent='No hay clientes seleccionados.'; } return; }
+              
+  if (!ids.length) { 
+    if (msg){ 
+      msg.className='info'; 
+      msg.textContent='No hay clientes seleccionados.'; 
+    } 
+    return; 
+  }
 
   if (!confirm(`¿Asignar ${ids.length} clientes al gestor #${targetId}?`)) return;
 
@@ -324,15 +421,27 @@ async function asignarClientesMasivamente(ev) {
       method: "POST",
       body: JSON.stringify({ clienteIds: ids, asignado_a: targetId })
     }));
+    
     const data = await safeJson(res);
-    if (!res.ok || data.status === "error") throw new Error(data.mensaje || `HTTP ${res.status}`);
+    if (!res.ok || data.status === "error") {
+      throw new Error(data.mensaje || `HTTP ${res.status}`);
+    }
 
-    if (msg) { msg.className = "success"; msg.textContent = `✅ ${data.mensaje || 'Asignación completada'}`; }
+    if (msg) { 
+      msg.className = "success"; 
+      msg.textContent = `✅ ${data.mensaje || 'Asignación completada'}`; 
+    }
     cargarTodosLosClientes();
   } catch (e) {
-    if (msg) { msg.className = "error"; msg.textContent = `❌ ${e.message}`; }
+    if (msg) { 
+      msg.className = "error"; 
+      msg.textContent = `❌ ${e.message}`; 
+    }
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = "🚀 Asignar Clientes Seleccionados"; }
+    if (btn) { 
+      btn.disabled = false; 
+      btn.textContent = "🚀 Asignar Clientes Seleccionados"; 
+    }
   }
 }
 
@@ -340,7 +449,13 @@ async function asignarClientesMasivamente(ev) {
 async function procesarArchivo(event) {
   const file = event.target.files?.[0];
   const msg = document.getElementById("mensajeExcel");
-  if (!file) { if (msg) { msg.className = "info"; msg.textContent = "Selecciona archivo"; } return; }
+  if (!file) { 
+    if (msg) { 
+      msg.className = "info"; 
+      msg.textContent = "Selecciona archivo"; 
+    } 
+    return; 
+  }
 
   try {
     const data = await file.arrayBuffer();
@@ -350,9 +465,15 @@ async function procesarArchivo(event) {
 
     const _norm = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
     const _pick = (row, keys) => {
-      for (const k of keys) if (row[k] != null && String(row[k]).trim() !== "") return row[k];
-      const m = {}; Object.keys(row).forEach(h => m[_norm(h)] = row[h]);
-      for (const k of keys) { const nk = _norm(k); if (m[nk] != null && String(m[nk]).trim() !== "") return m[nk]; }
+      for (const k of keys) {
+        if (row[k] != null && String(row[k]).trim() !== "") return row[k];
+      }
+      const m = {}; 
+      Object.keys(row).forEach(h => m[_norm(h)] = row[h]);
+      for (const k of keys) { 
+        const nk = _norm(k); 
+        if (m[nk] != null && String(m[nk]).trim() !== "") return m[nk]; 
+      }
       return "";
     };
 
@@ -366,27 +487,42 @@ async function procesarArchivo(event) {
       asignado_a: null
     })).filter(c => c.nombre);
 
-    if (!clientes.length) { if (msg) { msg.className = "error"; msg.textContent = "El archivo no contiene clientes válidos."; } return; }
+    if (!clientes.length) { 
+      if (msg) { 
+        msg.className = "error"; 
+        msg.textContent = "El archivo no contiene clientes válidos."; 
+      } 
+      return; 
+    }
 
     const res = await fetch("/cargar-clientes", withAuthHeaders({
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(withAuthHeaders().headers || {}) },
       body: JSON.stringify({ clientes })
     }));
 
     const dataRes = await safeJson(res);
     if (!res.ok || dataRes.status === "error") {
       const tip = res.status === 403 ? " (Si eres superadmin, primero ENTRA a una empresa.)" : "";
-      if (msg) { msg.className = "error"; msg.textContent = (dataRes.mensaje || `Error ${res.status}`) + tip; }
+      if (msg) { 
+        msg.className = "error"; 
+        msg.textContent = (dataRes.mensaje || `Error ${res.status}`) + tip; 
+      }
       return;
     }
 
-    if (msg) { msg.className = "success"; msg.textContent = `✅ ${dataRes.mensaje}`; }
+    if (msg) { 
+      msg.className = "success"; 
+      msg.textContent = `✅ ${dataRes.mensaje}`; 
+    }
     cargarTodosLosClientes();
   } catch (e) {
-    if (msg) { msg.className = "error"; msg.textContent = e.message || "Error procesando el archivo."; }
+    if (msg) { 
+      msg.className = "error"; 
+      msg.textContent = e.message || "Error procesando el archivo."; 
+    }
   }
 }
+
 async function limpiarClientes() {
   if (!confirm("¿Eliminar TODOS los clientes de esta empresa?")) return;
   const msg = document.getElementById("mensajeExcel");
@@ -394,9 +530,17 @@ async function limpiarClientes() {
     const res = await fetch("/limpiar-clientes", withAuthHeaders({ method: "POST" }));
     const d = await safeJson(res);
     if (!res.ok || d.status === "error") throw new Error(d.mensaje || `HTTP ${res.status}`);
-    if (msg) { msg.className = "success"; msg.textContent = d.mensaje || "Eliminados"; }
+    if (msg) { 
+      msg.className = "success"; 
+      msg.textContent = d.mensaje || "Eliminados"; 
+    }
     cargarTodosLosClientes();
-  } catch (e) { if (msg) { msg.className = "error"; msg.textContent = e.message; } }
+  } catch (e) { 
+    if (msg) { 
+      msg.className = "error"; 
+      msg.textContent = e.message; 
+    } 
+  }
 }
 
 /* ===== Gestor ===== */
@@ -407,9 +551,12 @@ function cargarClientes(uid) {
       const tbody = document.querySelector("#tablaClientes tbody");
       if (!tbody) return;
       tbody.innerHTML = "";
+      
       if (!Array.isArray(clientes) || clientes.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10">No tienes clientes asignados</td></tr>`; return;
+        tbody.innerHTML = `<tr><td colspan="10">No tienes clientes asignados</td></tr>`; 
+        return;
       }
+      
       clientes.forEach(c => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
@@ -430,19 +577,24 @@ function cargarClientes(uid) {
             </select>
           </td>
           <td><input type="text" class="observaciones" data-id="${c.id}" /></td>
-          <td><button onclick="registrarLlamada(this, ${c.id})">Registrar</button></td>`;
+          <td><button onclick="registrarLlamada(this, ${c.id})">Registrar</button></td>
+        `;
         tbody.appendChild(tr);
       });
     });
 }
+
 function registrarLlamada(btn, clienteId) {
   const fila = btn.closest("tr");
   const monto = fila.querySelector(".monto").value || 0;
   const resultado = fila.querySelector(".resultado").value;
   const observaciones = fila.querySelector(".observaciones").value || "";
+  
   if (!resultado) return alert("Selecciona un resultado");
 
-  btn.disabled = true; btn.textContent = "...";
+  btn.disabled = true; 
+  btn.textContent = "...";
+  
   fetch("/llamadas", withAuthHeaders({
     method: "POST",
     body: JSON.stringify({
@@ -454,12 +606,20 @@ function registrarLlamada(btn, clienteId) {
       observaciones
     })
   }))
-    .then(r => r.json())
-    .then(d => {
-      if (d.status !== "error") { fila.remove(); }
-      else { alert(d.mensaje || "Error"); btn.disabled = false; btn.textContent = "Registrar"; }
-    })
-    .catch(() => { btn.disabled = false; btn.textContent = "Registrar"; });
+  .then(r => r.json())
+  .then(d => {
+    if (d.status !== "error") { 
+      fila.remove(); 
+    } else { 
+      alert(d.mensaje || "Error"); 
+      btn.disabled = false; 
+      btn.textContent = "Registrar"; 
+    }
+  })
+  .catch(() => { 
+    btn.disabled = false; 
+    btn.textContent = "Registrar"; 
+  });
 }
 
 /* ===== Filtros ===== */
@@ -469,12 +629,16 @@ function filtrarClientes() {
     tr.style.display = tr.textContent.toLowerCase().includes(filtro) ? "" : "none";
   });
 }
+
 function toggleAllClients(cb) {
-  document.querySelectorAll("#tablaAsignarClientes .client-checkbox").forEach(ch => ch.checked = cb.checked);
+  document.querySelectorAll("#tablaAsignarClientes .client-checkbox").forEach(ch => {
+    ch.checked = cb.checked;
+  });
 }
 
 /* ===== Reporte & Export ===== */
 let _ultimoReporte = [];
+
 async function cargarReporte() {
   const desde = document.getElementById("repDesde")?.value || "";
   const hasta = document.getElementById("repHasta")?.value || "";
@@ -494,7 +658,13 @@ async function cargarReporte() {
     const rows = Array.isArray(data) ? data : (data?.reporte || []);
     _ultimoReporte = rows;
 
-    if (!rows.length) { if (msg) { msg.className = "info"; msg.textContent = "Sin registros en el periodo."; } return; }
+    if (!rows.length) { 
+      if (msg) { 
+        msg.className = "info"; 
+        msg.textContent = "Sin registros en el periodo."; 
+      } 
+      return; 
+    }
     if (msg) msg.textContent = "";
 
     rows.forEach(r => {
@@ -508,15 +678,24 @@ async function cargarReporte() {
         <td>${r.observaciones || ""}</td>
         <td>${r.tarifa || ""}</td>
         <td>${r.saldo_exigible || ""}</td>
-        <td>${r.saldo || ""}</td>`;
+        <td>${r.saldo || ""}</td>
+      `;
       tbody.appendChild(tr);
     });
   } catch (e) {
-    if (msg) { msg.className = "error"; msg.textContent = e.message; }
+    if (msg) { 
+      msg.className = "error"; 
+      msg.textContent = e.message; 
+    }
   }
 }
+
 function exportarReporte() {
-  if (!Array.isArray(_ultimoReporte) || !_ultimoReporte.length) { alert("Primero carga el reporte."); return; }
+  if (!Array.isArray(_ultimoReporte) || !_ultimoReporte.length) { 
+    alert("Primero carga el reporte."); 
+    return; 
+  }
+  
   const rows = _ultimoReporte.map(r => ({
     Usuario: r.usuario || "",
     Cliente: r.cliente || "",
@@ -528,13 +707,14 @@ function exportarReporte() {
     "Saldo Exigible": r.saldo_exigible || "",
     Saldo: r.saldo || ""
   }));
+  
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Reporte");
   XLSX.writeFile(wb, `reporte_${hoyLocalYMD()}.xlsx`);
 }
 
-/* ===== Geolocalización & Mapa ===== */
+/* ===== Geolocalización & Mapa (CORREGIDO) ===== */
 let googleMapsLoaded = false;
 let map = null;
 let adminMarkers = [];
@@ -542,101 +722,193 @@ let autoRefreshTimer = null;
 
 async function loadGoogleMapsApi() {
   if (googleMapsLoaded) return true;
+  
   try {
     const r = await fetch('/api-key');
     const j = await r.json();
     if (!j?.key) throw new Error('Sin API Key');
+    
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(j.key)}&libraries=geometry`;
-      s.async = true; s.defer = true;
-      s.onload = () => { googleMapsLoaded = true; resolve(); };
+      s.async = true; 
+      s.defer = true;
+      s.onload = () => { 
+        googleMapsLoaded = true; 
+        resolve(); 
+      };
       s.onerror = () => reject(new Error('No se pudo cargar Google Maps'));
       document.head.appendChild(s);
     });
     return true;
-  } catch {
+  } catch (err) {
+    console.error('Error cargando Google Maps:', err);
     return false;
   }
 }
 
-// Admin: inicializa mapa y refresco
 async function prepararMapaAdmin() {
   const mapaEl = document.getElementById('mapa');
   if (!mapaEl) return;
 
   const ok = await loadGoogleMapsApi();
   if (!ok) {
-    mapaEl.innerHTML = '<div style="padding:12px">Mapa no disponible (sin API Key). Se mostrará una vista básica.</div>';
+    mapaEl.innerHTML = '<div style="padding:12px;text-align:center;color:#666;">Mapa no disponible (sin API Key o error de carga).</div>';
+    return;
+  }
+
+  // Esperar a que google.maps esté disponible
+  let intentos = 0;
+  while (!window.google?.maps && intentos < 50) {
+    await new Promise(r => setTimeout(r, 100));
+    intentos++;
+  }
+
+  if (!window.google?.maps) {
+    mapaEl.innerHTML = '<div style="padding:12px;text-align:center;color:#666;">Error: Google Maps no se cargó correctamente.</div>';
     return;
   }
 
   map = new google.maps.Map(mapaEl, {
-    center: { lat: 19.4326, lng: -99.1332 }, zoom: 11,
-    mapTypeControl: false, streetViewControl: false
+    center: { lat: 19.4326, lng: -99.1332 }, 
+    zoom: 11,
+    mapTypeControl: false, 
+    streetViewControl: false
   });
 
   cargarMapaGestores();
+  
   if (autoRefreshTimer) clearInterval(autoRefreshTimer);
   autoRefreshTimer = setInterval(cargarMapaGestores, 30 * 60 * 1000); // cada 30 min
+  
   const info = document.getElementById('autoRefreshInfo');
   if (info) info.textContent = 'Actualización automática cada 30 minutos.';
 }
 
 async function cargarMapaGestores() {
-  if (!map) return;
+  if (!map) {
+    console.warn('Mapa no inicializado');
+    return;
+  }
+  
+  // Limpiar marcadores anteriores
   adminMarkers.forEach(m => m.setMap(null));
   adminMarkers = [];
 
   try {
     const res = await fetch('/ubicaciones/ultimas', withAuthHeaders());
     const data = await safeJson(res);
-    if (!Array.isArray(data)) return;
+    
+    if (!res.ok) {
+      console.error('Error cargando ubicaciones:', data.mensaje);
+      return;
+    }
+    
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log('No hay ubicaciones disponibles');
+      return;
+    }
 
     const bounds = new google.maps.LatLngBounds();
+    let marcadoresAgregados = 0;
+    
     data.forEach(u => {
       if (u.lat == null || u.lng == null) return;
+      
       const marker = new google.maps.Marker({
         position: { lat: Number(u.lat), lng: Number(u.lng) },
         map,
-        title: `${u.usuario} (${new Date(u.fecha).toLocaleString()})`
+        title: `${u.usuario} (${new Date(u.fecha).toLocaleString()})`,
+        animation: google.maps.Animation.DROP
       });
+      
       const infow = new google.maps.InfoWindow({
-        content: `<strong>${u.usuario}</strong><br>Última: ${new Date(u.fecha).toLocaleString()}`
+        content: `
+          <div style="padding:8px;">
+            <strong>${u.usuario}</strong><br>
+            Última ubicación: ${new Date(u.fecha).toLocaleString()}
+          </div>
+        `
       });
-      marker.addListener('click', ()=> infow.open({ map, anchor: marker }));
+      
+      marker.addListener('click', () => infow.open({ map, anchor: marker }));
       adminMarkers.push(marker);
       bounds.extend(marker.getPosition());
+      marcadoresAgregados++;
     });
-    if (!bounds.isEmpty()) map.fitBounds(bounds);
+    
+    if (marcadoresAgregados > 0) {
+      map.fitBounds(bounds);
+      // Si solo hay un marcador, hacer zoom más cercano
+      if (marcadoresAgregados === 1) {
+        setTimeout(() => map.setZoom(14), 100);
+      }
+      console.log(`Cargados ${marcadoresAgregados} gestores en el mapa`);
+    }
   } catch (e) {
-    console.warn('cargarMapaGestores error:', e.message);
+    console.error('Error en cargarMapaGestores:', e.message);
   }
 }
 
 // Gestor: envía ubicación al entrar y cada 30 min
 function iniciarTrackingGestor() {
-  if (!navigator.geolocation) return;
+  if (!navigator.geolocation) {
+    console.warn('Geolocalización no disponible en este navegador');
+    return;
+  }
+  
   // Disparo inmediato
-  navigator.geolocation.getCurrentPosition(pos => {
-    enviarUbicacion(pos.coords.latitude, pos.coords.longitude);
-  }, ()=>{}, { maximumAge: 0, enableHighAccuracy: true, timeout: 8000 });
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      enviarUbicacion(pos.coords.latitude, pos.coords.longitude);
+      console.log('Ubicación inicial enviada');
+    }, 
+    err => {
+      console.warn('Error obteniendo ubicación inicial:', err.message);
+    }, 
+    { 
+      maximumAge: 0, 
+      enableHighAccuracy: true, 
+      timeout: 8000 
+    }
+  );
 
   // Cada 30 min
   setInterval(() => {
-    navigator.geolocation.getCurrentPosition(pos => {
-      enviarUbicacion(pos.coords.latitude, pos.coords.longitude);
-    }, ()=>{}, { maximumAge: 0, enableHighAccuracy: true, timeout: 8000 });
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        enviarUbicacion(pos.coords.latitude, pos.coords.longitude);
+        console.log('Ubicación periódica enviada');
+      }, 
+      err => {
+        console.warn('Error obteniendo ubicación periódica:', err.message);
+      }, 
+      { 
+        maximumAge: 0, 
+        enableHighAccuracy: true, 
+        timeout: 8000 
+      }
+    );
   }, 30 * 60 * 1000);
 }
 
 async function enviarUbicacion(lat, lng) {
   try {
-    await fetch('/ubicacion', withAuthHeaders({
+    const res = await fetch('/ubicacion', withAuthHeaders({
       method: 'POST',
-      body: JSON.stringify({ usuario_id: usuarioActual.id, lat, lng, fecha: new Date().toISOString() })
+      body: JSON.stringify({ 
+        usuario_id: usuarioActual.id, 
+        lat, 
+        lng, 
+        fecha: new Date().toISOString() 
+      })
     }));
+    
+    if (!res.ok) {
+      const data = await safeJson(res);
+      console.warn('Error enviando ubicación:', data.mensaje);
+    }
   } catch (e) {
-    console.warn('enviarUbicacion error:', e.message);
+    console.warn('Error en enviarUbicacion:', e.message);
   }
 }

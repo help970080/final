@@ -270,4 +270,57 @@ body.login{ display:grid; place-items:center; background:linear-gradient(180deg,
     width: 100%;
   }
 }
+/* ====== Mejor uso del ancho en la bandeja del gestor ====== */
+
+/* 1) Más ancho total del layout */
+.container{ max-width: 1380px; }
+
+/* 2) Anchos de columnas (tabla Mis Clientes Asignados) */
+#tablaClientes{ table-layout: fixed; } /* respeta los anchos que definimos */
+#tablaClientes th, #tablaClientes td{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Cliente, Teléfono, Dirección, Tarifa, Exigible, Saldo, Monto, Resultado, Observaciones, Acción */
+#tablaClientes th:nth-child(1), #tablaClientes td:nth-child(1){ width: 18%; } /* Cliente */
+#tablaClientes th:nth-child(2), #tablaClientes td:nth-child(2){ width: 11%; } /* Teléfono */
+#tablaClientes th:nth-child(3), #tablaClientes td:nth-child(3){ width: 10%; } /* Dirección */
+#tablaClientes th:nth-child(4), #tablaClientes td:nth-child(4){ width: 8%;  } /* Tarifa */
+#tablaClientes th:nth-child(5), #tablaClientes td:nth-child(5){ width: 8%;  } /* Saldo Exigible */
+#tablaClientes th:nth-child(6), #tablaClientes td:nth-child(6){ width: 8%;  } /* Saldo */
+#tablaClientes th:nth-child(7), #tablaClientes td:nth-child(7){ width: 11%; } /* Monto Cobrado */
+#tablaClientes th:nth-child(8), #tablaClientes td:nth-child(8){ width: 11%; } /* Resultado */
+
+/* Observaciones toma el espacio restante */
+#tablaClientes th:nth-child(9), #tablaClientes td:nth-child(9){ width: auto; white-space: normal; }
+
+/* Acción, pegada a la derecha */
+#tablaClientes th:nth-child(10), #tablaClientes td:nth-child(10){ width: 9%; }
+
+/* 3) Inputs/controles a 100% dentro de su celda */
+#tablaClientes td .monto,
+#tablaClientes td .observaciones,
+#tablaClientes td .resultado{
+  width: 100%;
+  max-width: none;
+}
+
+/* 4) Columna "Acción" sticky (para que siempre se vea el botón) */
+.scroll{ position: relative; }
+#tablaClientes th:last-child,
+#tablaClientes td:last-child{
+  position: sticky;
+  right: 0;
+  background: #FFFFFF;
+  z-index: 2;
+  box-shadow: -6px 0 10px rgba(2,6,23,.05);
+}
+#tablaClientes td:last-child button{
+  padding: 8px 10px;
+  min-width: 104px;
+  white-space: nowrap;
+}
+
+/* 5) En pantallas pequeñas permitimos que Observaciones haga wrap y todo sea usable */
+@media (max-width: 900px){
+  #tablaClientes th, #tablaClientes td{ white-space: normal; }
+}
 
