@@ -1,6 +1,5 @@
 /* =========================================================
-   style.css — UI limpia, moderna y responsive
-   (sin cambiar nombres de clases existentes)
+   style.css – UI limpia, moderna y responsive (CORREGIDO)
 ========================================================= */
 
 /* ---------- Variables & Reset ---------- */
@@ -11,23 +10,23 @@
   --muted:#64748B;
   --border:#E5E7EB;
 
-  --primary:#4F46E5;   /* indigo */
+  --primary:#4F46E5;
   --primary-600:#4338CA;
   --primary-100:#EEF2FF;
 
-  --success:#16A34A;   /* green */
+  --success:#16A34A;
   --success-600:#15803D;
   --success-100:#ECFDF5;
 
-  --danger:#E11D48;    /* rose */
+  --danger:#E11D48;
   --danger-600:#BE123C;
   --danger-100:#FFF1F2;
 
-  --info:#0EA5E9;      /* sky */
+  --info:#0EA5E9;
   --info-600:#0284C7;
   --info-100:#E0F2FE;
 
-  --purple:#7C3AED;    /* violet */
+  --purple:#7C3AED;
   --purple-600:#6D28D9;
   --purple-100:#F3E8FF;
 
@@ -48,7 +47,11 @@ body{
 }
 
 /* ---------- Layouts ---------- */
-.container{max-width:1180px;margin:18px auto;padding:0 16px}
+.container{
+  max-width:1380px;
+  margin:18px auto;
+  padding:0 16px;
+}
 
 .topbar{
   position:sticky; top:0; z-index:10;
@@ -139,6 +142,14 @@ button:active{ transform:translateY(1px) }
 .button-purple:hover{ background:var(--purple-600) }
 
 /* ---------- Tables ---------- */
+.scroll{ 
+  position: relative;
+  overflow:auto; 
+  border:1px solid var(--border); 
+  border-radius:var(--radius-lg);
+}
+.scroll table{ min-width:820px }
+
 table{width:100%; border-collapse:separate; border-spacing:0}
 thead th{
   position:sticky; top:0; z-index:1;
@@ -153,9 +164,6 @@ td{
 }
 tr:hover td{ background:#FCFCFE }
 
-.scroll{ overflow:auto; border:1px solid var(--border); border-radius:var(--radius-lg) }
-.scroll table{ min-width:820px }
-
 /* Icono de teléfono clicable */
 td a[href^="tel:"]{
   color:var(--primary); text-decoration:none; font-weight:600;
@@ -165,6 +173,49 @@ td a[href^="tel:"]:hover{ text-decoration:underline }
 /* Checkbox / selects dentro de tabla */
 #tablaAsignarClientes input[type="checkbox"]{ width:18px; height:18px }
 #tablaAsignarClientes select{ min-width:180px }
+
+/* ---------- Tabla Clientes Gestor (Optimización de ancho) ---------- */
+#tablaClientes{ table-layout: fixed; }
+#tablaClientes th, #tablaClientes td{ 
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis; 
+}
+
+/* Anchos de columnas optimizados */
+#tablaClientes th:nth-child(1), #tablaClientes td:nth-child(1){ width: 18%; } /* Cliente */
+#tablaClientes th:nth-child(2), #tablaClientes td:nth-child(2){ width: 11%; } /* Teléfono */
+#tablaClientes th:nth-child(3), #tablaClientes td:nth-child(3){ width: 10%; } /* Dirección */
+#tablaClientes th:nth-child(4), #tablaClientes td:nth-child(4){ width: 8%;  } /* Tarifa */
+#tablaClientes th:nth-child(5), #tablaClientes td:nth-child(5){ width: 8%;  } /* Saldo Exigible */
+#tablaClientes th:nth-child(6), #tablaClientes td:nth-child(6){ width: 8%;  } /* Saldo */
+#tablaClientes th:nth-child(7), #tablaClientes td:nth-child(7){ width: 11%; } /* Monto Cobrado */
+#tablaClientes th:nth-child(8), #tablaClientes td:nth-child(8){ width: 11%; } /* Resultado */
+#tablaClientes th:nth-child(9), #tablaClientes td:nth-child(9){ width: auto; white-space: normal; } /* Observaciones */
+#tablaClientes th:nth-child(10), #tablaClientes td:nth-child(10){ width: 9%; } /* Acción */
+
+/* Inputs/controles a 100% dentro de su celda */
+#tablaClientes td .monto,
+#tablaClientes td .observaciones,
+#tablaClientes td .resultado{
+  width: 100%;
+  max-width: none;
+}
+
+/* Columna "Acción" sticky (siempre visible) */
+#tablaClientes th:last-child,
+#tablaClientes td:last-child{
+  position: sticky;
+  right: 0;
+  background: #FFFFFF;
+  z-index: 2;
+  box-shadow: -6px 0 10px rgba(2,6,23,.05);
+}
+#tablaClientes td:last-child button{
+  padding: 8px 10px;
+  min-width: 104px;
+  white-space: nowrap;
+}
 
 /* ---------- Mensajes ---------- */
 .info{
@@ -182,11 +233,19 @@ td a[href^="tel:"]:hover{ text-decoration:underline }
   padding:10px 14px; border-radius:10px;
   box-shadow:0 10px 30px rgba(0,0,0,.25);
   max-width:320px; line-height:1.3;
+  z-index: 9999;
 }
 .toast.hidden{ display:none }
+.toast.success{ background:#16A34A; }
+.toast.error{ background:#E11D48; }
+.toast.info{ background:#0EA5E9; }
 
 /* ---------- Login ---------- */
-body.login{ display:grid; place-items:center; background:linear-gradient(180deg,#F8FAFF,#F1F5F9) }
+body.login{ 
+  display:grid; 
+  place-items:center; 
+  background:linear-gradient(180deg,#F8FAFF,#F1F5F9);
+}
 .login-card{
   width:360px; max-width:92vw;
   background:var(--surface);
@@ -198,7 +257,7 @@ body.login{ display:grid; place-items:center; background:linear-gradient(180deg,
 .login-card input{ width:100% }
 .login-card .button-primary{ width:100% }
 
-/* ---------- Badges (opcional por si los usas) ---------- */
+/* ---------- Badges ---------- */
 .badge{
   display:inline-flex; align-items:center; gap:6px;
   padding:6px 10px; border-radius:999px;
@@ -225,6 +284,7 @@ body.login{ display:grid; place-items:center; background:linear-gradient(180deg,
   .topbar h1{ font-size:1.2rem }
   .form-row{ gap:8px }
   thead th, td{ padding:10px }
+  #tablaClientes th, #tablaClientes td{ white-space: normal; }
 }
 
 @media (max-width: 640px){
@@ -236,33 +296,7 @@ body.login{ display:grid; place-items:center; background:linear-gradient(180deg,
   #tablaAsignarClientes select{ width:100% }
   input[type="text"], input[type="password"], input[type="number"], input[type="date"], select{ width:100% }
   .scroll table{ min-width:680px }
-}
-/* ==== Fix: que la columna "Acción" siempre sea visible (sticky right) ==== */
-.scroll{ position: relative; } /* necesario para sticky */
-
-#tablaClientes th:last-child,
-#tablaClientes td:last-child{
-  position: sticky;
-  right: 0;
-  background: #FFFFFF;                /* que no se transparente sobre celdas */
-  z-index: 2;                          /* por encima del resto */
-  box-shadow: -8px 0 12px rgba(2,6,23,.04); /* sutil separador a la izquierda */
-}
-
-/* Botón más compacto dentro de la columna Acción */
-#tablaClientes td:last-child button{
-  padding: 8px 10px;
-  white-space: nowrap;
-  min-width: 110px;
-}
-
-/* (Opcional) Compactar un poco inputs y selects para ganar espacio horizontal */
-#tablaClientes td .monto{ max-width: 130px; }
-#tablaClientes td .observaciones{ max-width: 220px; }
-#tablaClientes td .resultado{ max-width: 160px; }
-
-/* En pantallas muy pequeñas, permitir ancho completo de los controles */
-@media (max-width: 640px){
+  
   #tablaClientes td .monto,
   #tablaClientes td .observaciones,
   #tablaClientes td .resultado{
@@ -270,57 +304,3 @@ body.login{ display:grid; place-items:center; background:linear-gradient(180deg,
     width: 100%;
   }
 }
-/* ====== Mejor uso del ancho en la bandeja del gestor ====== */
-
-/* 1) Más ancho total del layout */
-.container{ max-width: 1380px; }
-
-/* 2) Anchos de columnas (tabla Mis Clientes Asignados) */
-#tablaClientes{ table-layout: fixed; } /* respeta los anchos que definimos */
-#tablaClientes th, #tablaClientes td{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-/* Cliente, Teléfono, Dirección, Tarifa, Exigible, Saldo, Monto, Resultado, Observaciones, Acción */
-#tablaClientes th:nth-child(1), #tablaClientes td:nth-child(1){ width: 18%; } /* Cliente */
-#tablaClientes th:nth-child(2), #tablaClientes td:nth-child(2){ width: 11%; } /* Teléfono */
-#tablaClientes th:nth-child(3), #tablaClientes td:nth-child(3){ width: 10%; } /* Dirección */
-#tablaClientes th:nth-child(4), #tablaClientes td:nth-child(4){ width: 8%;  } /* Tarifa */
-#tablaClientes th:nth-child(5), #tablaClientes td:nth-child(5){ width: 8%;  } /* Saldo Exigible */
-#tablaClientes th:nth-child(6), #tablaClientes td:nth-child(6){ width: 8%;  } /* Saldo */
-#tablaClientes th:nth-child(7), #tablaClientes td:nth-child(7){ width: 11%; } /* Monto Cobrado */
-#tablaClientes th:nth-child(8), #tablaClientes td:nth-child(8){ width: 11%; } /* Resultado */
-
-/* Observaciones toma el espacio restante */
-#tablaClientes th:nth-child(9), #tablaClientes td:nth-child(9){ width: auto; white-space: normal; }
-
-/* Acción, pegada a la derecha */
-#tablaClientes th:nth-child(10), #tablaClientes td:nth-child(10){ width: 9%; }
-
-/* 3) Inputs/controles a 100% dentro de su celda */
-#tablaClientes td .monto,
-#tablaClientes td .observaciones,
-#tablaClientes td .resultado{
-  width: 100%;
-  max-width: none;
-}
-
-/* 4) Columna "Acción" sticky (para que siempre se vea el botón) */
-.scroll{ position: relative; }
-#tablaClientes th:last-child,
-#tablaClientes td:last-child{
-  position: sticky;
-  right: 0;
-  background: #FFFFFF;
-  z-index: 2;
-  box-shadow: -6px 0 10px rgba(2,6,23,.05);
-}
-#tablaClientes td:last-child button{
-  padding: 8px 10px;
-  min-width: 104px;
-  white-space: nowrap;
-}
-
-/* 5) En pantallas pequeñas permitimos que Observaciones haga wrap y todo sea usable */
-@media (max-width: 900px){
-  #tablaClientes th, #tablaClientes td{ white-space: normal; }
-}
-
